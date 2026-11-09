@@ -102,7 +102,8 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .mc .n{font-weight:700;font-size:14px;text-align:center}
 .mc.sun .n{color:var(--sun)} .mc.sat .n{color:var(--sat)}
 .mc .mi{display:block;font-size:10px;line-height:1.35;padding:0 2px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--chip-fg)}
-.mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.tr{background:var(--pink);color:var(--tr-red);font-weight:700}
+.mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.q{color:var(--tr-red);font-weight:700}
+.mi.q.pink{background:var(--pink)} .mi.q.green{background:var(--green)} .mi.q.blue{background:var(--blue)}
 .hl{color:var(--sun);font-size:13px;font-weight:700;cursor:pointer}
 .mi.hol{background:none;color:var(--sun);font-weight:700;text-align:center}
 .mc .more{font-size:10px;color:var(--muted);text-align:center}
@@ -176,7 +177,9 @@ td.left{text-align:left;font-size:12px;color:var(--muted)}
     <span><i style="background:var(--ceo)"></i>대표님 일정</span>
     <span><i style="background:var(--tmp)"></i>임시 라운딩</span>
     <span><i style="background:var(--visit)"></i>손님방문</span>
-    <span><i style="background:var(--pink)"></i><i style="background:var(--green);margin-left:-6px"></i><i style="background:var(--blue);margin-left:-6px"></i><b style="color:var(--tr-red)">양도</b></span>
+    <span><i style="background:var(--green)"></i><b style="color:var(--tr-red)">양도 주중(노벨)</b></span>
+    <span><i style="background:var(--pink)"></i><b style="color:var(--tr-red)">양도 주말(노벨)</b></span>
+    <span><i style="background:var(--blue)"></i><b style="color:var(--tr-red)">양도 다른 골프장</b></span>
   </p>
 
   <div class="mnav mnav2">
@@ -322,7 +325,7 @@ function fixSel(){
 function evHTML(e){
   const lines=String(e.lines||"").split("\n").map(s=>`<div>${esc(s)}</div>`).join("");
   if(e.type==="tr")
-    return `<div class="tr ${esc(e.color||"green")}" data-edit="${e.id}" tabindex="0"><div class="lbl">${esc(e.label||"양도확정")}</div>${lines}</div>`;
+    return `<div class="tr ${trColor(e)}" data-edit="${e.id}" tabindex="0"><div class="lbl">${esc(e.label||"양도확정")}</div>${lines}</div>`;
   const [cl,nm]=CHIP[e.type]||CHIP.ceo;
   return `<div class="ev" data-edit="${e.id}" tabindex="0"><span class="chip ${cl}">${nm}</span><div class="txt">${lines}</div></div>`;
 }
@@ -341,6 +344,11 @@ function itemCourse(x){
   const t=String(x.lines||"");
   for(const k of ["밀양","포웰","진주","드비치","볼카노"])if(t.includes(k))return k;
   return "노벨";
+}
+// 양도 색: 노벨(고성) 주중=연두, 노벨(고성) 주말=분홍, 그 밖의 골프장=하늘색 (자동)
+function trColor(x){
+  if(itemCourse(x)!=="노벨")return "blue";
+  const w=new Date(x.date+"T00:00:00").getDay(); return (w===0||w===6)?"pink":"green";
 }
 const tableRows=()=>tableOf(ymd(cur).slice(0,7)).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>l.split("|"));
 
@@ -376,10 +384,11 @@ function render(){
 }
 function renderNext(){
   const t0=ymd(new Date()), base=new Date(t0+"T00:00:00");
-  const list=state.items.filter(x=>x.type!=="tr"&&x.type!=="hol"&&x.date>=t0).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
-  $("#nextBox").innerHTML=`<h2>다가오는 일정</h2>`+(list.length?list.map(e=>{
+  const lim=new Date(base); lim.setDate(lim.getDate()+3); const t3=ymd(lim);   // 오늘~D-3까지만
+  const list=state.items.filter(x=>x.type!=="tr"&&x.type!=="hol"&&x.date>=t0&&x.date<=t3).sort((a,b)=>a.date.localeCompare(b.date));
+  $("#nextBox").innerHTML=`<h2>다가오는 일정 (3일 이내)</h2>`+(list.length?list.map(e=>{
     const d=new Date(e.date+"T00:00:00"), n=Math.round((d-base)/864e5);
-    return `<button type="button" class="up ${e.type}" data-sel="${e.date}"><span class="dd">${n===0?"오늘":"D-"+n}</span><span class="ut"><small>${d.getMonth()+1}/${d.getDate()}(${KDOW[d.getDay()]}) · ${(CHIP[e.type]||CHIP.ceo)[1]}</small><b>${esc(String(e.lines||"").split("\n").slice(0,2).join(" · "))}</b></span></button>`}).join(""):`<div class="empty-note">예정된 일정이 없습니다.</div>`);
+    return `<button type="button" class="up ${e.type}" data-sel="${e.date}"><span class="dd">${n===0?"오늘":"D-"+n}</span><span class="ut"><small>${d.getMonth()+1}/${d.getDate()}(${KDOW[d.getDay()]}) · ${(CHIP[e.type]||CHIP.ceo)[1]}</small><b>${esc(String(e.lines||"").split("\n").slice(0,2).join(" · "))}</b></span></button>`}).join(""):`<div class="empty-note">3일 이내 일정이 없습니다.</div>`);
 }
 function renderDay(){
   const d=new Date(sel+"T00:00:00"), all=state.items.filter(x=>x.date===sel), ev=all.filter(x=>x.type!=="hol");
@@ -394,7 +403,7 @@ function renderMini(){
   for(let i=0;i<first;i++)h+=`<div class="mc empty"></div>`;
   for(let d=1;d<=days;d++){
     const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, all=state.items.filter(x=>x.date===k), hol=all.filter(x=>x.type==="hol"), ev=all.filter(x=>x.type!=="hol");
-    const txt=hol.map(x=>`<span class="mi hol">${esc(x.lines)}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
+    const txt=hol.map(x=>`<span class="mi hol">${esc(x.lines)}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
     h+=`<button type="button" class="mc ${hol.length||w==0?"sun":w==6?"sat":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
   }
   $("#mini").innerHTML=h;
@@ -440,7 +449,7 @@ function openForm(id,date){
     <div id="trbox" ${it.type==="tr"?"":"hidden"} style="display:grid;gap:10px">
       <label>골프장 (양도 현황 횟수에 자동으로 셉니다)<select name="course">${courses.map(n=>`<option ${n===curCourse?"selected":""}>${esc(n)}</option>`).join("")}</select></label>
       <label>양도 표시 (예: 양도확정①)<input name="label" value="${esc(it.label||"양도확정")}"></label>
-      <label>배경색<select name="color">${sel2({pink:"분홍",green:"연두",blue:"하늘"},it.color||"green")}</select></label>
+      <p style="margin:0;font-size:13px;color:var(--muted)">색은 자동입니다. 노벨(고성) 주중은 연두, 주말은 분홍, 다른 골프장은 하늘색입니다.</p>
     </div>
     <div class="row">
       ${id?`<button type="button" class="btn" id="del" style="margin-right:auto;color:var(--sun)">삭제</button>`:""}
