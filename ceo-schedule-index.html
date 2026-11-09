@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>대표님 월간 스케줄</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="대표님 일정">
+<meta name="application-name" content="대표님 일정">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+:root{
+  --bg:#ffffff; --fg:#111418; --muted:#5b6470; --line:#b9c0c9; --head:#e4e7eb; --card:#f3f5f7;
+  --sun:#e60000; --sat:#0070c0;
+  --ceo:#00b0f0; --tmp:#92d050; --visit:#ffe600; --chip-fg:#0b1a24;
+  --tr-red:#e00000; --pink:#ffcccc; --green:#e2efda; --blue:#ddebf7;
+  --today:#ff9f00; --pri:#0070c0;
+  --font:'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161b; --fg:#f1f3f5; --muted:#9aa4b0; --line:#3a424c; --head:#222931; --card:#1b2128;
+  --sun:#ff6b6b; --sat:#5fb2ff; --tr-red:#ff7b7b; --pri:#5fb2ff;
+  --pink:#4d2a2f; --green:#2b4228; --blue:#22384f; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#12161b; --fg:#f1f3f5; --muted:#9aa4b0; --line:#3a424c; --head:#222931; --card:#1b2128;
+  --sun:#ff6b6b; --sat:#5fb2ff; --tr-red:#ff7b7b; --pri:#5fb2ff;
+  --pink:#4d2a2f; --green:#2b4228; --blue:#22384f; color-scheme:dark;}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);
+  padding-block:16px 40px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
+button,input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:1400px;margin:0 auto}
+.btn{border:1px solid var(--line);background:var(--bg);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--pri);color:#fff;border-color:var(--pri);font-weight:700}
+.btn:focus-visible,.day:focus-visible,.ev:focus-visible,.mc:focus-visible,.up:focus-visible{outline:3px solid var(--today);outline-offset:1px}
+
+/* 잠금 */
+#lock{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.lock-card{background:var(--card);padding:28px;border-radius:14px;width:min(340px,100%);text-align:center}
+.lock-card h2{font-size:22px;margin:0 0 6px}
+.lock-card p{margin:0 0 12px;color:var(--muted);font-size:15px}
+.lock-card input{width:100%;padding:12px;font-size:20px;text-align:center;border:1px solid var(--line);border-radius:8px;background:var(--bg);margin-bottom:10px}
+.lock-card button{width:100%;padding:12px;font-size:17px;font-weight:700;border:0;border-radius:8px;background:var(--ceo);color:var(--chip-fg);cursor:pointer}
+#lockMsg{color:var(--sun);margin:10px 0 0;min-height:1.2em}
+
+/* 머리글 */
+header{display:flex;justify-content:space-between;align-items:center;gap:8px 24px;flex-wrap:wrap;margin-bottom:10px}
+h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
+.mnav{display:flex;gap:8px;align-items:center}
+.mnav strong{font-size:clamp(18px,2.4vw,26px);min-width:5.5em;text-align:center}
+.mnav2{display:none}
+.meta{font-size:14px;font-weight:700;text-align:right}
+.meta small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 12px;font-size:14px;color:var(--muted)}
+.legend i{display:inline-block;width:42px;height:18px;vertical-align:middle;margin-right:6px;border-radius:2px}
+
+/* 다가오는 일정 */
+.next{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.next h2{font-size:15px;margin:0 0 6px;color:var(--muted)}
+.up{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;border-left:6px solid var(--ceo);background:var(--bg);border-radius:6px;padding:7px 10px;margin-top:5px;cursor:pointer;min-width:0}
+.up.tmp{border-left-color:var(--tmp)} .up.visit{border-left-color:var(--visit)}
+.up .dd{font-size:22px;font-weight:900;min-width:2.5em;color:var(--pri);white-space:nowrap}
+.up .ut{min-width:0}
+.up small{display:block;color:var(--muted);font-size:12px}
+.up b{font-size:16px;font-weight:700;overflow-wrap:anywhere}
+.empty-note{color:var(--muted);font-size:15px;padding:4px 2px}
+
+/* 큰 달력 (컴퓨터) */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px dashed var(--line)}
+.dow{background:var(--head);text-align:center;font-weight:700;font-size:16px;padding:6px 0;border-right:1px dashed var(--line);border-bottom:1px solid var(--line)}
+.dow.sun{color:var(--sun)} .dow.sat{color:var(--sat)}
+.day{min-height:150px;padding:4px 0 8px;border-right:1px dashed var(--line);border-bottom:1px dashed var(--line);min-width:0;position:relative}
+.day.sel{background:var(--card)}
+.num{font-size:22px;font-weight:900;line-height:1.1;padding:0 6px 3px;display:flex;align-items:baseline;gap:6px}
+.sun .num{color:var(--sun)} .sat .num{color:var(--sat)}
+.add{margin-left:auto;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:6px;width:26px;height:26px;line-height:1;font-size:18px;cursor:pointer;padding:0}
+.today{outline:3px solid var(--today);outline-offset:-3px}
+.today .num::after{content:"오늘";order:1;font-size:12px;font-weight:700;background:var(--today);color:#111;border-radius:3px;padding:1px 6px}
+.ev{display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:start;padding:1px 0;font-size:16px;line-height:1.35;cursor:pointer}
+.ev:hover{background:var(--head)}
+.ev .chip{font-weight:700;padding:1px 8px;min-width:54px;text-align:center;color:var(--chip-fg);white-space:nowrap}
+.ev .chip.ceo{background:var(--ceo)} .ev .chip.tmp{background:var(--tmp)} .ev .chip.visit{background:var(--visit)}
+.ev .txt{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.tr{padding:2px 6px 3px;margin:2px 0;font-size:16px;line-height:1.35;font-weight:500;cursor:pointer}
+.tr .lbl{color:var(--tr-red);font-weight:700}
+.tr.pink{background:var(--pink)} .tr.green{background:var(--green)} .tr.blue{background:var(--blue)}
+
+/* 당일 일정 상자 */
+#dayBox{background:var(--card);border:2px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+#dayBox .dh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+#dayBox .dh b{font-size:clamp(20px,5vw,26px);font-weight:900}
+#dayBox .dh .tag{background:var(--today);color:#111;font-size:12px;font-weight:700;border-radius:3px;padding:1px 7px}
+#dayBox .dh .btn{margin-left:auto}
+#dayBox .ev,#dayBox .tr{font-size:18px}
+#dayBox .none{color:var(--muted);margin:6px 0}
+.wx{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:16px;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;min-height:2em}
+.wx select{margin-left:auto;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font-size:14px}
+
+/* 작은 달력 (폰) */
+.mini{display:none}
+.mc{border:1px solid var(--line);background:var(--bg);border-radius:6px;min-height:84px;padding:3px 2px;display:flex;flex-direction:column;align-items:stretch;gap:2px;cursor:pointer;min-width:0;text-align:left}
+.mc.empty{border:0;background:none;cursor:default}
+.mc .n{font-weight:700;font-size:14px;text-align:center}
+.mc.sun .n{color:var(--sun)} .mc.sat .n{color:var(--sat)}
+.mc .mi{display:block;font-size:10px;line-height:1.35;padding:0 2px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--chip-fg)}
+.mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.q{color:var(--tr-red);font-weight:700}
+.mi.q.pink{background:var(--pink)} .mi.q.green{background:var(--green)} .mi.q.blue{background:var(--blue)}
+.hl{color:var(--sun);font-size:13px;font-weight:700;cursor:pointer}
+.mi.hol{background:none;color:var(--sun);font-weight:700;text-align:center}
+.mc .more{font-size:10px;color:var(--muted);text-align:center}
+.mc.sel{background:var(--head);border:2px solid var(--pri)}
+.mc.today .n{background:var(--today);color:#111;border-radius:10px;margin:0 auto;padding:0 6px}
+
+/* 양도 현황 */
+.lower{margin-top:20px}
+.sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+h2{font-size:17px;margin:0;font-weight:700}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid var(--line);padding:4px 6px;text-align:center;vertical-align:middle;line-height:1.35}
+th{background:var(--head);font-weight:700}
+td.left{text-align:left;font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin:6px 0 0}
+#sync{font-size:12px;color:var(--muted)}
+.btn.sm{padding:4px 10px;font-size:13px}
+
+/* 입력창 */
+.modal{position:fixed;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;z-index:40;padding:12px}
+.modal form{background:var(--bg);padding:20px;border-radius:14px;width:min(460px,100%);max-height:94vh;overflow:auto;display:grid;gap:10px;border:1px solid var(--line)}
+.modal h3{margin:0;font-size:19px}
+.modal label{display:grid;gap:4px;font-size:14px;color:var(--muted)}
+.modal input,.modal select,.modal textarea{padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:16px}
+.modal .row{display:flex;gap:8px;justify-content:flex-end}
+
+@media (max-width:760px){
+  header .mnav{display:none}
+  .mnav2{display:flex;justify-content:center;margin:4px 0 8px}
+  .legend,#csv{display:none}
+  #cal{display:none}
+  .mini{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:6px}
+  .mini .dow{border:0;background:none;padding:4px 0;font-size:14px}
+  .meta{text-align:left}
+}
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <form id="lockForm" class="lock-card">
+    <h2>대표님 스케줄</h2>
+    <p>비밀번호를 입력해 주세요.</p>
+    <input id="pw" type="password" inputmode="numeric" autocomplete="off" placeholder="비밀번호" required>
+    <button type="submit">들어가기</button>
+    <p id="lockMsg"></p>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <h1>월간 대표님 SCHEDULE</h1>
+    <div class="mnav">
+      <button class="btn" data-nav="prev" aria-label="이전 달">‹</button>
+      <strong class="mlabel"></strong>
+      <button class="btn" data-nav="next" aria-label="다음 달">›</button>
+      <button class="btn" data-nav="today">오늘</button>
+    </div>
+    <div class="meta"><span id="inputDate"></span><small id="sync"></small><small id="ver"></small></div>
+  </header>
+
+  <div class="next" id="nextBox"></div>
+  <div id="dayBox"></div>
+
+  <div class="bar">
+    <button class="btn primary" id="addBtn">+ 일정 추가</button>
+    <button class="btn" id="csv">엑셀(CSV) 다운로드</button>
+  </div>
+  <p class="legend">
+    <span><i style="background:var(--ceo)"></i>대표님 일정</span>
+    <span><i style="background:var(--tmp)"></i>임시 라운딩</span>
+    <span><i style="background:var(--visit)"></i>손님방문</span>
+    <span><i style="background:var(--green)"></i><b style="color:var(--tr-red)">양도 주중(노벨)</b></span>
+    <span><i style="background:var(--pink)"></i><b style="color:var(--tr-red)">양도 주말(노벨)</b></span>
+    <span><i style="background:var(--blue)"></i><b style="color:var(--tr-red)">양도 다른 골프장</b></span>
+  </p>
+
+  <div class="mnav mnav2">
+    <button class="btn" data-nav="prev" aria-label="이전 달">‹</button>
+    <strong class="mlabel"></strong>
+    <button class="btn" data-nav="next" aria-label="다음 달">›</button>
+    <button class="btn" data-nav="today">오늘</button>
+  </div>
+  <div class="cal" id="cal"></div>
+  <div class="mini" id="mini"></div>
+
+  <section class="lower">
+    <div class="sec-h"><h2 id="th2">양도 현황</h2><button class="btn sm" id="editTable">수정</button></div>
+    <div class="scroll"><table id="ttable"></table></div>
+    <p class="note" id="tnote"></p>
+  </section>
+</div>
+
+<div id="modal" class="modal" hidden></div>
+
+<script>
+/* ===== 설정 ===== */
+const CONFIG={
+  PW_HASH:"6c25c8f454fea8dd5cd0b201b4f739993aebfc454de7b410ee9457c553699a85", // 비밀번호 0707
+  DB_URL:"https://ceo-schedule-51488-default-rtdb.asia-southeast1.firebasedatabase.app", // 대표님 전용 DB (비서실과 분리)
+  PATH:"/ceo.json", LOCAL:"ceo_data"
+};
+const $=s=>document.querySelector(s);
+const pad=n=>String(n).padStart(2,"0");
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+const KDOW=["일","월","화","수","목","금","토"];
+const TYPES={ceo:"대표님 일정",tmp:"임시 라운딩",visit:"손님방문",tr:"양도",hol:"공휴일·기념일"};
+
+/* ===== 처음 들어갈 내용 (캡처 내용) ===== */
+function seed(){
+  const it=[]; const add=(d,type,lines,o={})=>it.push({id:uid(),date:"2026-11-"+pad(d),type,lines,...o});
+  const c=(d,...l)=>add(d,"ceo",l.join("\n")), t=(d,...l)=>add(d,"tmp",l.join("\n")), v=(d,...l)=>add(d,"visit",l.join("\n"));
+  const r=(d,label,color,course,...l)=>add(d,"tr",l.join("\n"),{label,color,course});
+  t(1,'노벨cc 08:34','충무코스"노캐디"');
+  v(2,'11:00 삼보 김주영 전무'); v(2,'15:00 MNC솔루션 강근혁');
+  c(3,'그린24 (3조)','공룡코스 12:52'); r(3,'양도확정①','green','노벨(고성)','그린24');
+  c(5,'제주회','창원cc 12:07','서코스 "캐디"');
+  r(8,'양도확정①','pink','노벨(고성)','노벨cc 08:34 박봉열','공룡코스"노캐디"');
+  r(9,'양도확정②','green','노벨(고성)','노벨cc 07:45 옥길성','충무코스"노캐디"');
+  t(10,'노벨cc 12:14','가야코스"노캐디"');
+  c(11,'수요회');
+  t(12,'노벨cc 12:10','가야코스"노캐디"');
+  c(13,'청사회','노벨cc 12:17','가야코스"노캐디"'); r(13,'양도확정③','green','노벨(고성)','노벨cc 08:41 김진영','충무코스"캐디"');
+  c(14,'함중회','노벨cc 08:34','충무코스"노캐디"');
+  c(15,'롯데회'); r(15,'양도확정②','pink','노벨(고성)','노벨cc 08:20 정성운','가야코스"노캐디"');
+  r(16,'양도확정④','green','노벨(고성)','노벨cc 07:45 박영욱','충무코스"캐디"');
+  c(17,'정유회'); t(17,'노벨cc 12:31','공룡코스"노캐디"');
+  c(18,'수요회'); r(18,'양도확정','blue','노벨(밀양)','밀양노벨cc 08:20 도진영','힐코스 "캐디"');
+  t(19,'노벨cc 12:38','공룡코스"노캐디"');
+  t(20,'노벨cc 12:24','충무코스"노캐디"');
+  c(21,'이재준 선임연구원 결혼','리베라 컨벤션 7층 루벤스홀','11:20'); t(21,'노벨cc 08:41','가야코스"노캐디"');
+  c(22,'의사회'); t(22,'노벨cc 08:06','가야코스"노캐디"'); t(22,'노벨cc 08:13','가야코스"노캐디"'); r(22,'양도확정','blue','포웰(김해)','포웰cc 이희준');
+  t(24,'노벨cc 12:31','충무코스"노캐디"'); r(24,'양도요청⑤','green','노벨(고성)','노벨cc 07:59 세무사');
+  c(25,'동친회(저녁식사)');
+  c(26,'제주회'); t(26,'노벨cc 12:24','충무코스"노캐디"');
+  c(27,'제주투어','에어부산 07:55','호텔난타 체크인 15:00'); t(27,'노벨cc 12:31','충무코스"노캐디"');
+  c(28,'제주투어');
+  c(29,'제주투어'); r(29,'양도확정③','pink','노벨(고성)','노벨cc 김영일');
+  c(30,'제주투어','대한항공 16:20','호텔난타 체크아웃 11:00');
+  return {
+    items:it, updated:"2026-11-09",
+    table:"노벨(고성)|6/6||주중: 김진영, 옥길성, 박영욱, 그린24, 세무사 / 주말: 박봉열, 정성운, 김영일\n포웰(김해)|1/1||\n노벨(밀양)|5/2||주중: 도진영\n진주|2/1||동반할인\n드비치|2/2||\n볼카노CC|4/4||평일 55,000원  주말 75,000원",
+    tnote:"* 드비치 주중양도 133,000원"
+  };
+}
+
+/* ===== 12월 내용 (캡처 내용) ===== */
+function decItems(){
+  const it=[]; const add=(d,type,lines,o={})=>it.push({id:uid(),date:"2026-12-"+pad(d),type,lines,...o});
+  const c=(d,...l)=>add(d,"ceo",l.join("\n")), t=(d,...l)=>add(d,"tmp",l.join("\n"));
+  c(1,'그린24'); t(1,'노벨cc 12:31','충무코스"노캐디"');
+  c(3,'제주회'); t(3,'노벨cc 12:31','가야코스"노캐디"');
+  t(4,'노벨cc 12:31','공룡코스"노캐디"');
+  c(9,'수요회'); c(11,'청사회');
+  c(12,'함중회'); add(12,"tr",'노벨cc 2부 육심균',{label:'양도확정①',color:'pink',course:'노벨(고성)'});
+  c(15,'정유회'); c(16,'수요회'); c(20,'롯데회'); c(23,'동친회(저녁식사)');
+  add(25,"hol",'성탄절');
+  c(27,'의사회');
+  return it;
+}
+const DEC_TABLE="노벨(고성)|6/6||주중: / 주말: 육심균\n포웰|1/1||\n노벨(밀양)|5/2||\n진주|2/1||동반할인\n드비치|2/2||\n볼카노CC|4/4||평일 55,000원  주말 75,000원\n* 드비치 주중양도 133,000원  주말동반 200,000원";
+
+let state=null, cur=new Date(); cur.setDate(1);
+let sel=ymd(new Date());
+
+/* ===== 잠금 ===== */
+async function sha(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function unlock(){$("#lock").hidden=true;$("#app").hidden=false;start()}
+$("#lockForm").onsubmit=async e=>{e.preventDefault();
+  if(await sha($("#pw").value.trim())===CONFIG.PW_HASH){try{localStorage.setItem("ceo_ok",CONFIG.PW_HASH)}catch{};unlock()}
+  else $("#lockMsg").textContent="비밀번호가 맞지 않습니다."};
+
+/* ===== 저장/공유 ===== */
+function saveLocal(){try{localStorage.setItem(CONFIG.LOCAL,JSON.stringify(state))}catch{}}
+async function load(){
+  let local=null;try{local=JSON.parse(localStorage.getItem(CONFIG.LOCAL)||"null")}catch{}
+  state=local&&local.items?local:seed();
+  if(CONFIG.DB_URL){
+    try{const d=await(await fetch(CONFIG.DB_URL+CONFIG.PATH)).json();
+      if(d&&d.items)state=d; else await push();
+      $("#sync").textContent="🟢 공유 연결됨";}
+    catch{$("#sync").textContent="🔴 공유 연결 실패 (이 기기에만 저장)"}
+  }else $("#sync").textContent="이 기기에만 저장";
+  if(migrate()){saveLocal(); if(CONFIG.DB_URL){try{await push()}catch{}}}
+}
+// 양도 현황을 달마다 따로 두고, 12월 내용을 한 번만 넣습니다
+function migrate(){
+  let ch=false;
+  if(!state.tables){state.tables={}; if(state.table)state.tables["2026-11"]=state.table+(state.tnote?"\n"+state.tnote:""); ch=true}
+  if(!state.migDec){state.items.push(...decItems()); state.tables["2026-12"]=DEC_TABLE; state.migDec=1; ch=true}
+  return ch;
+}
+// 그 달의 양도 현황 글 (없으면 앞 달의 골프장·가능 횟수만 가져오고 양도자는 비움)
+function tableOf(mk){
+  const T=state.tables||{};
+  if(T[mk]!=null)return T[mk];
+  const prev=Object.keys(T).filter(k=>k<mk).sort().pop();
+  return String(prev?T[prev]:(state.table||"")).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>{const a=l.split("|");return [a[0],a[1]||"",a[2]||"",""].join("|")}).join("\n");
+}
+const noteOf=mk=>tableOf(mk).split("\n").filter(l=>l.startsWith("*")).join("   ");
+async function push(){await fetch(CONFIG.DB_URL+CONFIG.PATH,{method:"PUT",body:JSON.stringify(state)})}
+async function save(){
+  state.updated=ymd(new Date()); saveLocal(); render();
+  if(CONFIG.DB_URL){try{await push();$("#sync").textContent="🟢 공유 연결됨"}catch{$("#sync").textContent="🔴 공유 저장 실패 (이 기기에는 저장됨)"}}
+}
+setInterval(async()=>{ if(!CONFIG.DB_URL||!state||!$("#modal").hidden)return;
+  try{const d=await(await fetch(CONFIG.DB_URL+CONFIG.PATH)).json();
+    if(d&&d.items&&JSON.stringify(d)!==JSON.stringify(state)){state=d;saveLocal();render()}}catch{}},15000);
+
+/* ===== 도우미 ===== */
+const CHIP={ceo:["ceo","대표님"],tmp:["tmp","임시"],visit:["visit","손님방문"]};
+function fixSel(){
+  const k=ymd(cur).slice(0,7);
+  if(!sel.startsWith(k)){const t=ymd(new Date()); sel=t.startsWith(k)?t:k+"-01"}
+}
+function evHTML(e){
+  const lines=String(e.lines||"").split("\n").map(s=>`<div>${esc(s)}</div>`).join("");
+  if(e.type==="tr")
+    return `<div class="tr ${trColor(e)}" data-edit="${e.id}" tabindex="0"><div class="lbl">${esc(e.label||"양도확정")}</div>${lines}</div>`;
+  const [cl,nm]=CHIP[e.type]||CHIP.ceo;
+  return `<div class="ev" data-edit="${e.id}" tabindex="0"><span class="chip ${cl}">${nm}</span><div class="txt">${lines}</div></div>`;
+}
+// 작은 달력 칸에 쓰는 짧은 글
+function abbr(e){
+  const all=String(e.lines||""), L=all.split("\n"), tm=(all.match(/\d{1,2}:\d{2}/)||[""])[0];
+  if(e.type==="ceo")return L[0];
+  if(e.type==="tmp")return tm?"⛳"+tm:"⛳라운딩";
+  if(e.type==="visit")return "방문"+(tm?" "+tm:"");
+  return "양도"+(tm?" "+tm:"");
+}
+// 양도 일정이 어느 골프장인지 (직접 고른 값이 우선, 없으면 글자에서 찾음)
+const normCourse=n=>/밀양/.test(n)?"밀양":/노벨/.test(n)?"노벨":String(n).replace(/\(.*?\)|cc|CC/g,"").trim();
+function itemCourse(x){
+  if(x.course)return normCourse(x.course);
+  const t=String(x.lines||"");
+  for(const k of ["밀양","포웰","진주","드비치","볼카노"])if(t.includes(k))return k;
+  return "노벨";
+}
+// 양도 색: 노벨(고성) 주중=연두, 노벨(고성) 주말=분홍, 그 밖의 골프장=하늘색 (자동)
+function trColor(x){
+  if(itemCourse(x)!=="노벨")return "blue";
+  const w=new Date(x.date+"T00:00:00").getDay(); return (w===0||w===6)?"pink":"green";
+}
+const tableRows=()=>tableOf(ymd(cur).slice(0,7)).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>l.split("|"));
+
+/* ===== 그리기 ===== */
+function render(){
+  fixSel();
+  const y=cur.getFullYear(), m=cur.getMonth();
+  document.querySelectorAll(".mlabel").forEach(el=>el.textContent=`${y}년 ${m+1}월`);
+  const u=state.updated?new Date(state.updated+"T00:00:00"):new Date();
+  $("#inputDate").textContent=`입력일: ${u.getFullYear()}.${pad(u.getMonth()+1)}.${pad(u.getDate())}.(${KDOW[u.getDay()]})`;
+  const first=new Date(y,m,1).getDay(), days=new Date(y,m+1,0).getDate();
+  const total=Math.ceil((first+days)/7)*7, today=ymd(new Date());
+  let h=KDOW.map((d,i)=>`<div class="dow ${i==0?"sun":i==6?"sat":""}">${d}</div>`).join("");
+  for(let i=0;i<total;i++){
+    const d=i-first+1, w=i%7, wc=w==0?"sun":w==6?"sat":"";
+    if(d<1||d>days){h+=`<div class="day empty"></div>`;continue}
+    const k=`${y}-${pad(m+1)}-${pad(d)}`, all=state.items.filter(x=>x.date===k), hol=all.filter(x=>x.type==="hol"), ev=all.filter(x=>x.type!=="hol");
+    h+=`<div class="day ${hol.length?"sun":wc}${k===today?" today":""}${k===sel?" sel":""}" data-d="${k}"><div class="num">${d}${hol.map(x=>`<span class="hl" data-edit="${x.id}">${esc(x.lines)}</span>`).join("")}<button class="add" data-add="${k}" aria-label="${d}일 일정 추가">+</button></div>${ev.map(evHTML).join("")}</div>`;
+  }
+  $("#cal").innerHTML=h;
+
+  // 양도 현황 (사용 횟수는 달력의 양도 일정에서 자동 계산, 주중=월~금 / 주말=토·일)
+  $("#th2").textContent=`${m+1}월 양도 현황`;
+  const mk=`${y}-${pad(m+1)}`, trs=state.items.filter(x=>x.type==="tr"&&x.date.startsWith(mk));
+  $("#ttable").innerHTML=`<thead><tr><th>골프장</th><th>가능<br>주중/주말</th><th>${m+1}월 양도<br>주중/주말</th><th>양도자·메모</th></tr></thead><tbody>`+
+    tableRows().map(r=>{
+      const k=normCourse(r[0]), mine=trs.filter(x=>itemCourse(x)===k);
+      const wd=mine.filter(x=>{const w=new Date(x.date+"T00:00:00").getDay();return w>0&&w<6}).length, we=mine.length-wd;
+      const nm=r[0]==="포웰"?"포웰(김해)":r[0];
+      // 양도가능 횟수를 다 채우면 그 숫자만 빨간색 (주중·주말 따로)
+      const cap=String(r[1]||"").split("/").map(s=>parseInt(s,10));
+      const full=(n,c)=>c>0&&n>=c, red='style="color:var(--sun);font-weight:900"';
+      return `<tr><th>${esc(nm)}</th><td>${esc(r[1]||"")}</td><td><b ${full(wd,cap[0])?red:""}>${wd}</b> / <b ${full(we,cap[1])?red:""}>${we}</b></td><td class="left">${esc((r[3]||"").replace(/ \/ /g," · "))}</td></tr>`}).join("")+`</tbody>`;
+  $("#tnote").textContent=noteOf(mk);
+  renderNext(); renderDay(); renderMini();
+}
+function renderNext(){
+  const t0=ymd(new Date()), base=new Date(t0+"T00:00:00");
+  const lim=new Date(base); lim.setDate(lim.getDate()+3); const t3=ymd(lim);   // 오늘~D-3까지만
+  const list=state.items.filter(x=>x.type!=="tr"&&x.type!=="hol"&&x.date>=t0&&x.date<=t3).sort((a,b)=>a.date.localeCompare(b.date));
+  $("#nextBox").innerHTML=`<h2>다가오는 일정 (3일 이내)</h2>`+(list.length?list.map(e=>{
+    const d=new Date(e.date+"T00:00:00"), n=Math.round((d-base)/864e5);
+    return `<button type="button" class="up ${e.type}" data-sel="${e.date}"><span class="dd">${n===0?"오늘":"D-"+n}</span><span class="ut"><small>${d.getMonth()+1}/${d.getDate()}(${KDOW[d.getDay()]}) · ${(CHIP[e.type]||CHIP.ceo)[1]}</small><b>${esc(String(e.lines||"").split("\n").slice(0,2).join(" · "))}</b></span></button>`}).join(""):`<div class="empty-note">3일 이내 일정이 없습니다.</div>`);
+}
+function renderDay(){
+  const d=new Date(sel+"T00:00:00"), all=state.items.filter(x=>x.date===sel), ev=all.filter(x=>x.type!=="hol");
+  const hol=all.filter(x=>x.type==="hol").map(x=>`<span class="hl" data-edit="${x.id}">${esc(x.lines)}</span>`).join("");
+  $("#dayBox").innerHTML=`<div class="dh"><b>${d.getMonth()+1}월 ${d.getDate()}일 (${KDOW[d.getDay()]})</b>${hol}${sel===ymd(new Date())?'<span class="tag">오늘</span>':""}<button class="btn primary" data-add="${sel}">+ 추가</button></div>`+
+    (ev.length?ev.map(evHTML).join(""):`<div class="none">이 날은 일정이 없습니다.</div>`)+`<div class="wx" id="wx"></div>`;
+  renderWx();
+}
+function renderMini(){
+  const y=cur.getFullYear(), m=cur.getMonth(), first=new Date(y,m,1).getDay(), days=new Date(y,m+1,0).getDate(), today=ymd(new Date());
+  let h=KDOW.map((d,i)=>`<div class="dow ${i==0?"sun":i==6?"sat":""}">${d}</div>`).join("");
+  for(let i=0;i<first;i++)h+=`<div class="mc empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, all=state.items.filter(x=>x.date===k), hol=all.filter(x=>x.type==="hol"), ev=all.filter(x=>x.type!=="hol");
+    const txt=hol.map(x=>`<span class="mi hol">${esc(x.lines)}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
+    h+=`<button type="button" class="mc ${hol.length||w==0?"sun":w==6?"sat":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
+  }
+  $("#mini").innerHTML=h;
+}
+
+/* ===== 날씨 (Open-Meteo, 무료·키 없음) ===== */
+const WPLACES={"고성":[34.97,128.32],"김해":[35.23,128.88],"밀양":[35.50,128.75],"창원":[35.23,128.68],"진주":[35.18,128.11],"부산":[35.18,129.08],"제주":[33.50,126.53]};
+const WKEYS=[["밀양","밀양"],["포웰","김해"],["창원","창원"],["진주","진주"],["제주","제주"],["부산","부산"],["노벨","고성"]];
+const WCODE=c=>c===0?["☀️","맑음"]:c<=2?["🌤️","구름 조금"]:c===3?["☁️","흐림"]:c<=48?["🌫️","안개"]:c<=57?["🌦️","이슬비"]:c<=67?["🌧️","비"]:c<=77?["❄️","눈"]:c<=82?["🌦️","소나기"]:["⛈️","뇌우"];
+const wcache={}; let wover="";
+function wplace(ev){const t=ev.map(e=>e.lines||"").join(" ");for(const [k,p] of WKEYS)if(t.includes(k))return p;return "고성"}
+async function getW(p){
+  if(wcache[p])return wcache[p];
+  const [la,lo]=WPLACES[p];
+  const j=await(await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max&wind_speed_unit=ms&timezone=Asia%2FSeoul&past_days=2&forecast_days=16`)).json();
+  const o={}; j.daily.time.forEach((t,i)=>o[t]={c:j.daily.weathercode[i],hi:j.daily.temperature_2m_max[i],lo:j.daily.temperature_2m_min[i],pr:j.daily.precipitation_probability_max[i],wi:j.daily.windspeed_10m_max[i]});
+  return wcache[p]=o;
+}
+async function renderWx(){
+  const box=$("#wx"); if(!box)return; const day=sel;
+  const p=wover||wplace(state.items.filter(x=>x.date===day));
+  const pick=`<select id="wsel" aria-label="날씨 지역">${Object.keys(WPLACES).map(k=>`<option ${k===p?"selected":""}>${k}</option>`).join("")}</select>`;
+  try{
+    const w=(await getW(p))[day]; if(day!==sel)return;
+    if(!w){box.innerHTML=`<span style="color:var(--muted)">날씨 예보는 앞으로 약 2주 이내만 볼 수 있습니다.</span>${pick}`}
+    else{const [ic,tx]=WCODE(w.c), rain=w.pr>=60;
+      box.innerHTML=`<span style="font-size:22px">${ic}</span><b>${tx}</b><span>${Math.round(w.lo)}° ~ ${Math.round(w.hi)}°</span><span>☂ 강수 ${w.pr??"-"}%</span><span>💨 ${Math.round(w.wi)}m/s</span>${rain?`<b style="color:var(--sun)">우천 주의</b>`:""}${pick}`}
+    const s=box.querySelector("#wsel"); if(s)s.onchange=()=>{wover=s.value;renderWx()};
+  }catch{box.innerHTML=`<span style="color:var(--muted)">날씨를 불러오지 못했습니다.</span>`}
+}
+
+/* ===== 입력창 ===== */
+function openForm(id,date){
+  const it=state.items.find(x=>x.id===id)||{type:"ceo",date:date||sel,lines:"",color:"green",label:"양도확정"};
+  const sel2=(o,v)=>Object.entries(o).map(([k,t])=>`<option value="${k}" ${k===v?"selected":""}>${t}</option>`).join("");
+  const courses=tableRows().map(r=>r[0]);
+  const curCourse=it.course||(courses.find(n=>normCourse(n)===itemCourse(it))||courses[0]||"");
+  $("#modal").innerHTML=`<form>
+    <h3>${id?"일정 수정":"일정 추가"}</h3>
+    <label>구분<select name="type" id="ftype">${sel2(TYPES,it.type)}</select></label>
+    <label>날짜<input type="date" name="date" required value="${esc(it.date)}"></label>
+    <label>내용 (줄바꿈으로 여러 줄)<textarea name="lines" rows="4" required placeholder="예: 노벨cc 08:34&#10;충무코스&quot;노캐디&quot;">${esc(it.lines||"")}</textarea></label>
+    <div id="trbox" ${it.type==="tr"?"":"hidden"} style="display:grid;gap:10px">
+      <label>골프장 (양도 현황 횟수에 자동으로 셉니다)<select name="course">${courses.map(n=>`<option ${n===curCourse?"selected":""}>${esc(n)}</option>`).join("")}</select></label>
+      <label>양도 표시 (예: 양도확정①)<input name="label" value="${esc(it.label||"양도확정")}"></label>
+      <p style="margin:0;font-size:13px;color:var(--muted)">색은 자동입니다. 노벨(고성) 주중은 연두, 주말은 분홍, 다른 골프장은 하늘색입니다.</p>
+    </div>
+    <div class="row">
+      ${id?`<button type="button" class="btn" id="del" style="margin-right:auto;color:var(--sun)">삭제</button>`:""}
+      <button type="button" class="btn" id="cancel">취소</button><button class="btn primary">저장</button></div></form>`;
+  $("#modal").hidden=false;
+  const f=$("#modal form");
+  $("#ftype").onchange=e=>{$("#trbox").hidden=e.target.value!=="tr"};
+  $("#cancel").onclick=()=>$("#modal").hidden=true;
+  if(id)$("#del").onclick=()=>{if($("#del").dataset.ok){state.items=state.items.filter(x=>x.id!==id);$("#modal").hidden=true;save()}
+    else{$("#del").dataset.ok=1;$("#del").textContent="한 번 더 누르면 삭제"}};
+  f.onsubmit=e=>{e.preventDefault();
+    const v=Object.fromEntries(new FormData(f));
+    if(v.type!=="tr"){delete v.label;delete v.color;delete v.course;delete it.course;delete it.label;delete it.color}
+    Object.assign(it,v);
+    if(!id){it.id=uid();state.items.push(it)}
+    $("#modal").hidden=true;save()};
+}
+function openText(title,val,onSave,hint){
+  $("#modal").innerHTML=`<form><h3>${title}</h3>
+    <label>${hint}<textarea name="v" rows="10">${esc(val||"")}</textarea></label>
+    <div class="row"><button type="button" class="btn" id="cancel">취소</button><button class="btn primary">저장</button></div></form>`;
+  $("#modal").hidden=false;
+  $("#cancel").onclick=()=>$("#modal").hidden=true;
+  $("#modal form").onsubmit=e=>{e.preventDefault();onSave(new FormData(e.target).get("v"));$("#modal").hidden=true;save()};
+}
+
+/* ===== 이벤트 ===== */
+document.addEventListener("click",e=>{
+  const n=e.target.closest("[data-nav]");
+  if(n){const k=n.dataset.nav;
+    if(k==="prev")cur.setMonth(cur.getMonth()-1); else if(k==="next")cur.setMonth(cur.getMonth()+1);
+    else{cur=new Date();cur.setDate(1);sel=ymd(new Date())}
+    return render()}
+  const s=e.target.closest("[data-sel]");
+  if(s){sel=s.dataset.sel;cur=new Date(+sel.slice(0,4),+sel.slice(5,7)-1,1);render();return window.scrollTo({top:0,behavior:"smooth"})}
+  const a=e.target.closest("[data-add]"); if(a)return openForm(null,a.dataset.add);
+  const t=e.target.closest("[data-edit]"); if(t)return openForm(t.dataset.edit);
+  const dd=e.target.closest(".day[data-d]"); if(dd){sel=dd.dataset.d;render()}
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.dataset&&e.target.dataset.edit)openForm(e.target.dataset.edit) });
+$("#addBtn").onclick=()=>openForm(null,sel);
+$("#editTable").onclick=()=>{const mk=ymd(cur).slice(0,7);
+  openText(`${cur.getMonth()+1}월 양도 현황 수정`,tableOf(mk),v=>{state.tables=state.tables||{};state.tables[mk]=v},
+  "이 달만 바뀝니다. 한 줄에 하나, 「골프장|양도가능|(비움)|양도자·메모」 형식. 양도 횟수는 달력의 양도 일정에서 자동으로 세니 세 번째 칸은 비워 두세요. 별표(*)로 시작하는 줄은 표 아래 메모로 나옵니다.")};
+$("#csv").onclick=()=>{
+  const head=["날짜","구분","내용","양도표시","골프장"];
+  const rows=[...state.items].sort((a,b)=>a.date.localeCompare(b.date)).map(i=>[i.date,TYPES[i.type]||i.type,String(i.lines||"").replace(/\n/g," / "),i.label||"",i.type==="tr"?(i.course||""):""]);
+  const csv="﻿"+[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`대표님_스케줄_${ymd(new Date())}.csv`;a.click();
+};
+async function start(){await load();
+  const k=ymd(cur).slice(0,7);
+  if(!state.items.some(i=>i.date.startsWith(k))&&state.items.length){const l=[...state.items].map(i=>i.date).sort().pop();cur=new Date(l.slice(0,7)+"-01T00:00:00")}
+  render()}
+/* ===== 자동 새 버전 확인: 새 파일이 올라가면 같은 주소에서 알아서 새로 불러옵니다 ===== */
+const VER=16;
+$("#ver").textContent="화면 버전 "+VER;
+(async()=>{try{
+  const t=await(await fetch(location.pathname+"?c="+Date.now(),{cache:"no-store"})).text();
+  const m=t.match(/const VER=(\d+)/);
+  if(m&&+m[1]>VER&&sessionStorage.getItem("ceo_rl")!==m[1]){sessionStorage.setItem("ceo_rl",m[1]);location.reload()}
+}catch{}})();
+try{if(localStorage.getItem("ceo_ok")===CONFIG.PW_HASH)unlock()}catch{}
+</script>
+</body>
+</html>
