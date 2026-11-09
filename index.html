@@ -103,6 +103,8 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .mc.sun .n{color:var(--sun)} .mc.sat .n{color:var(--sat)}
 .mc .mi{display:block;font-size:10px;line-height:1.35;padding:0 2px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--chip-fg)}
 .mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.tr{background:var(--pink);color:var(--tr-red);font-weight:700}
+.hl{color:var(--sun);font-size:13px;font-weight:700;cursor:pointer}
+.mi.hol{background:none;color:var(--sun);font-weight:700;text-align:center}
 .mc .more{font-size:10px;color:var(--muted);text-align:center}
 .mc.sel{background:var(--head);border:2px solid var(--pri)}
 .mc.today .n{background:var(--today);color:#111;border-radius:10px;margin:0 auto;padding:0 6px}
@@ -208,7 +210,7 @@ const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const uid=()=>(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const KDOW=["일","월","화","수","목","금","토"];
-const TYPES={ceo:"대표님 일정",tmp:"임시 라운딩",visit:"손님방문",tr:"양도"};
+const TYPES={ceo:"대표님 일정",tmp:"임시 라운딩",visit:"손님방문",tr:"양도",hol:"공휴일·기념일"};
 
 /* ===== 처음 들어갈 내용 (캡처 내용) ===== */
 function seed(){
@@ -248,6 +250,22 @@ function seed(){
   };
 }
 
+/* ===== 12월 내용 (캡처 내용) ===== */
+function decItems(){
+  const it=[]; const add=(d,type,lines,o={})=>it.push({id:uid(),date:"2026-12-"+pad(d),type,lines,...o});
+  const c=(d,...l)=>add(d,"ceo",l.join("\n")), t=(d,...l)=>add(d,"tmp",l.join("\n"));
+  c(1,'그린24'); t(1,'노벨cc 12:31','충무코스"노캐디"');
+  c(3,'제주회'); t(3,'노벨cc 12:31','가야코스"노캐디"');
+  t(4,'노벨cc 12:31','공룡코스"노캐디"');
+  c(9,'수요회'); c(11,'청사회');
+  c(12,'함중회'); add(12,"tr",'노벨cc 2부 육심균',{label:'양도확정①',color:'pink',course:'노벨(고성)'});
+  c(15,'정유회'); c(16,'수요회'); c(20,'롯데회'); c(23,'동친회(저녁식사)');
+  add(25,"hol",'성탄절');
+  c(27,'의사회');
+  return it;
+}
+const DEC_TABLE="노벨(고성)|6/6||주중: / 주말: 육심균\n포웰|1/1||\n노벨(밀양)|5/2||\n진주|2/1||동반할인\n드비치|2/2||\n볼카노CC|4/4||평일 55,000원  주말 75,000원\n* 드비치 주중양도 133,000원  주말동반 200,000원";
+
 let state=null, cur=new Date(); cur.setDate(1);
 let sel=ymd(new Date());
 
@@ -269,7 +287,23 @@ async function load(){
       $("#sync").textContent="🟢 공유 연결됨";}
     catch{$("#sync").textContent="🔴 공유 연결 실패 (이 기기에만 저장)"}
   }else $("#sync").textContent="이 기기에만 저장";
+  if(migrate()){saveLocal(); if(CONFIG.DB_URL){try{await push()}catch{}}}
 }
+// 양도 현황을 달마다 따로 두고, 12월 내용을 한 번만 넣습니다
+function migrate(){
+  let ch=false;
+  if(!state.tables){state.tables={}; if(state.table)state.tables["2026-11"]=state.table+(state.tnote?"\n"+state.tnote:""); ch=true}
+  if(!state.migDec){state.items.push(...decItems()); state.tables["2026-12"]=DEC_TABLE; state.migDec=1; ch=true}
+  return ch;
+}
+// 그 달의 양도 현황 글 (없으면 앞 달의 골프장·가능 횟수만 가져오고 양도자는 비움)
+function tableOf(mk){
+  const T=state.tables||{};
+  if(T[mk]!=null)return T[mk];
+  const prev=Object.keys(T).filter(k=>k<mk).sort().pop();
+  return String(prev?T[prev]:(state.table||"")).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>{const a=l.split("|");return [a[0],a[1]||"",a[2]||"",""].join("|")}).join("\n");
+}
+const noteOf=mk=>tableOf(mk).split("\n").filter(l=>l.startsWith("*")).join("   ");
 async function push(){await fetch(CONFIG.DB_URL+CONFIG.PATH,{method:"PUT",body:JSON.stringify(state)})}
 async function save(){
   state.updated=ymd(new Date()); saveLocal(); render();
@@ -308,7 +342,7 @@ function itemCourse(x){
   for(const k of ["밀양","포웰","진주","드비치","볼카노"])if(t.includes(k))return k;
   return "노벨";
 }
-const tableRows=()=>String(state.table||"").split("\n").filter(Boolean).map(l=>l.split("|"));
+const tableRows=()=>tableOf(ymd(cur).slice(0,7)).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>l.split("|"));
 
 /* ===== 그리기 ===== */
 function render(){
@@ -323,8 +357,8 @@ function render(){
   for(let i=0;i<total;i++){
     const d=i-first+1, w=i%7, wc=w==0?"sun":w==6?"sat":"";
     if(d<1||d>days){h+=`<div class="day empty"></div>`;continue}
-    const k=`${y}-${pad(m+1)}-${pad(d)}`, ev=state.items.filter(x=>x.date===k);
-    h+=`<div class="day ${wc}${k===today?" today":""}${k===sel?" sel":""}" data-d="${k}"><div class="num">${d}<button class="add" data-add="${k}" aria-label="${d}일 일정 추가">+</button></div>${ev.map(evHTML).join("")}</div>`;
+    const k=`${y}-${pad(m+1)}-${pad(d)}`, all=state.items.filter(x=>x.date===k), hol=all.filter(x=>x.type==="hol"), ev=all.filter(x=>x.type!=="hol");
+    h+=`<div class="day ${hol.length?"sun":wc}${k===today?" today":""}${k===sel?" sel":""}" data-d="${k}"><div class="num">${d}${hol.map(x=>`<span class="hl" data-edit="${x.id}">${esc(x.lines)}</span>`).join("")}<button class="add" data-add="${k}" aria-label="${d}일 일정 추가">+</button></div>${ev.map(evHTML).join("")}</div>`;
   }
   $("#cal").innerHTML=h;
 
@@ -337,19 +371,20 @@ function render(){
       const wd=mine.filter(x=>{const w=new Date(x.date+"T00:00:00").getDay();return w>0&&w<6}).length, we=mine.length-wd;
       const nm=r[0]==="포웰"?"포웰(김해)":r[0];
       return `<tr><th>${esc(nm)}</th><td>${esc(r[1]||"")}</td><td><b>${wd}</b> / <b>${we}</b></td><td class="left">${esc((r[3]||"").replace(/ \/ /g," · "))}</td></tr>`}).join("")+`</tbody>`;
-  $("#tnote").textContent=state.tnote||"";
+  $("#tnote").textContent=noteOf(mk);
   renderNext(); renderDay(); renderMini();
 }
 function renderNext(){
   const t0=ymd(new Date()), base=new Date(t0+"T00:00:00");
-  const list=state.items.filter(x=>x.type!=="tr"&&x.date>=t0).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
+  const list=state.items.filter(x=>x.type!=="tr"&&x.type!=="hol"&&x.date>=t0).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
   $("#nextBox").innerHTML=`<h2>다가오는 일정</h2>`+(list.length?list.map(e=>{
     const d=new Date(e.date+"T00:00:00"), n=Math.round((d-base)/864e5);
     return `<button type="button" class="up ${e.type}" data-sel="${e.date}"><span class="dd">${n===0?"오늘":"D-"+n}</span><span class="ut"><small>${d.getMonth()+1}/${d.getDate()}(${KDOW[d.getDay()]}) · ${(CHIP[e.type]||CHIP.ceo)[1]}</small><b>${esc(String(e.lines||"").split("\n").slice(0,2).join(" · "))}</b></span></button>`}).join(""):`<div class="empty-note">예정된 일정이 없습니다.</div>`);
 }
 function renderDay(){
-  const d=new Date(sel+"T00:00:00"), ev=state.items.filter(x=>x.date===sel);
-  $("#dayBox").innerHTML=`<div class="dh"><b>${d.getMonth()+1}월 ${d.getDate()}일 (${KDOW[d.getDay()]})</b>${sel===ymd(new Date())?'<span class="tag">오늘</span>':""}<button class="btn primary" data-add="${sel}">+ 추가</button></div>`+
+  const d=new Date(sel+"T00:00:00"), all=state.items.filter(x=>x.date===sel), ev=all.filter(x=>x.type!=="hol");
+  const hol=all.filter(x=>x.type==="hol").map(x=>`<span class="hl" data-edit="${x.id}">${esc(x.lines)}</span>`).join("");
+  $("#dayBox").innerHTML=`<div class="dh"><b>${d.getMonth()+1}월 ${d.getDate()}일 (${KDOW[d.getDay()]})</b>${hol}${sel===ymd(new Date())?'<span class="tag">오늘</span>':""}<button class="btn primary" data-add="${sel}">+ 추가</button></div>`+
     (ev.length?ev.map(evHTML).join(""):`<div class="none">이 날은 일정이 없습니다.</div>`)+`<div class="wx" id="wx"></div>`;
   renderWx();
 }
@@ -358,9 +393,9 @@ function renderMini(){
   let h=KDOW.map((d,i)=>`<div class="dow ${i==0?"sun":i==6?"sat":""}">${d}</div>`).join("");
   for(let i=0;i<first;i++)h+=`<div class="mc empty"></div>`;
   for(let d=1;d<=days;d++){
-    const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, ev=state.items.filter(x=>x.date===k);
-    const txt=ev.slice(0,3).map(e=>`<span class="mi ${e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
-    h+=`<button type="button" class="mc ${w==0?"sun":w==6?"sat":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
+    const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, all=state.items.filter(x=>x.date===k), hol=all.filter(x=>x.type==="hol"), ev=all.filter(x=>x.type!=="hol");
+    const txt=hol.map(x=>`<span class="mi hol">${esc(x.lines)}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
+    h+=`<button type="button" class="mc ${hol.length||w==0?"sun":w==6?"sat":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
   }
   $("#mini").innerHTML=h;
 }
@@ -423,13 +458,13 @@ function openForm(id,date){
     if(!id){it.id=uid();state.items.push(it)}
     $("#modal").hidden=true;save()};
 }
-function openText(title,key,hint){
+function openText(title,val,onSave,hint){
   $("#modal").innerHTML=`<form><h3>${title}</h3>
-    <label>${hint}<textarea name="v" rows="10">${esc(state[key]||"")}</textarea></label>
+    <label>${hint}<textarea name="v" rows="10">${esc(val||"")}</textarea></label>
     <div class="row"><button type="button" class="btn" id="cancel">취소</button><button class="btn primary">저장</button></div></form>`;
   $("#modal").hidden=false;
   $("#cancel").onclick=()=>$("#modal").hidden=true;
-  $("#modal form").onsubmit=e=>{e.preventDefault();state[key]=new FormData(e.target).get("v");$("#modal").hidden=true;save()};
+  $("#modal form").onsubmit=e=>{e.preventDefault();onSave(new FormData(e.target).get("v"));$("#modal").hidden=true;save()};
 }
 
 /* ===== 이벤트 ===== */
@@ -447,7 +482,9 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.dataset&&e.target.dataset.edit)openForm(e.target.dataset.edit) });
 $("#addBtn").onclick=()=>openForm(null,sel);
-$("#editTable").onclick=()=>openText("양도 현황 수정","table","한 줄에 하나, 「골프장|양도가능|(비움)|양도자·메모」 형식. 양도 횟수는 달력의 양도 일정에서 자동으로 세니 세 번째 칸은 비워 두세요. 예: 포웰(김해)|1/1||이름");
+$("#editTable").onclick=()=>{const mk=ymd(cur).slice(0,7);
+  openText(`${cur.getMonth()+1}월 양도 현황 수정`,tableOf(mk),v=>{state.tables=state.tables||{};state.tables[mk]=v},
+  "이 달만 바뀝니다. 한 줄에 하나, 「골프장|양도가능|(비움)|양도자·메모」 형식. 양도 횟수는 달력의 양도 일정에서 자동으로 세니 세 번째 칸은 비워 두세요. 별표(*)로 시작하는 줄은 표 아래 메모로 나옵니다.")};
 $("#csv").onclick=()=>{
   const head=["날짜","구분","내용","양도표시","골프장"];
   const rows=[...state.items].sort((a,b)=>a.date.localeCompare(b.date)).map(i=>[i.date,TYPES[i.type]||i.type,String(i.lines||"").replace(/\n/g," / "),i.label||"",i.type==="tr"?(i.course||""):""]);
