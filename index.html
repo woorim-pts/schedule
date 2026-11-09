@@ -378,7 +378,10 @@ function render(){
       const k=normCourse(r[0]), mine=trs.filter(x=>itemCourse(x)===k);
       const wd=mine.filter(x=>{const w=new Date(x.date+"T00:00:00").getDay();return w>0&&w<6}).length, we=mine.length-wd;
       const nm=r[0]==="포웰"?"포웰(김해)":r[0];
-      return `<tr><th>${esc(nm)}</th><td>${esc(r[1]||"")}</td><td><b>${wd}</b> / <b>${we}</b></td><td class="left">${esc((r[3]||"").replace(/ \/ /g," · "))}</td></tr>`}).join("")+`</tbody>`;
+      // 양도가능 횟수를 다 채우면 그 숫자만 빨간색 (주중·주말 따로)
+      const cap=String(r[1]||"").split("/").map(s=>parseInt(s,10));
+      const full=(n,c)=>c>0&&n>=c, red='style="color:var(--sun);font-weight:900"';
+      return `<tr><th>${esc(nm)}</th><td>${esc(r[1]||"")}</td><td><b ${full(wd,cap[0])?red:""}>${wd}</b> / <b ${full(we,cap[1])?red:""}>${we}</b></td><td class="left">${esc((r[3]||"").replace(/ \/ /g," · "))}</td></tr>`}).join("")+`</tbody>`;
   $("#tnote").textContent=noteOf(mk);
   renderNext(); renderDay(); renderMini();
 }
