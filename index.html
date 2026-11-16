@@ -85,6 +85,10 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .today .num::after{content:"오늘";order:1;font-size:12px;font-weight:700;background:var(--today);color:#111;border-radius:3px;padding:1px 6px}
 .ev{display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:start;padding:1px 0;font-size:16px;line-height:1.35;cursor:pointer}
 .ev:hover{background:var(--head)}
+/* 지난 날은 흐리게 (오늘과 앞으로의 일정이 눈에 띄도록) */
+.day.past .ev,.day.past .tr,.day.past .num{opacity:.4}
+.mc.past{opacity:.5}
+.mc.past.sel{opacity:1}
 .ev.auto .chip{outline:2px dashed var(--fg);outline-offset:-3px}
 .ev .chip{font-weight:700;padding:1px 8px;min-width:54px;text-align:center;color:var(--chip-fg);white-space:nowrap}
 .ev .chip.ceo{background:var(--ceo)} .ev .chip.tmp{background:var(--tmp)} .ev .chip.visit{background:var(--visit)}
@@ -111,11 +115,13 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 
 /* 작은 달력 (폰) */
 .mini{display:none}
-.mc{border:1px solid var(--line);background:var(--bg);border-radius:6px;min-height:84px;padding:3px 2px;display:flex;flex-direction:column;align-items:stretch;gap:2px;cursor:pointer;min-width:0;text-align:left}
+.mc{border:1px solid var(--line);background:var(--bg);border-radius:6px;min-height:112px;padding:3px 2px;display:flex;flex-direction:column;align-items:stretch;gap:2px;cursor:pointer;min-width:0;text-align:left}
 .mc.empty{border:0;background:none;cursor:default}
 .mc .n{font-weight:700;font-size:14px;text-align:center}
 .mc.sun .n{color:var(--sun)} .mc.sat .n{color:var(--sat)}
 .mc .mi{display:block;font-size:10px;line-height:1.35;padding:0 2px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--chip-fg)}
+.mc .mi b{display:block;font-size:8.5px;line-height:1.25;font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.mc .mi i{display:block;font-style:normal;font-size:10px;line-height:1.25;overflow:hidden;text-overflow:ellipsis}
 .mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.q{color:var(--tr-red);font-weight:700}
 .mi.q.pink{background:var(--pink)} .mi.q.green{background:var(--green)} .mi.q.blue{background:var(--blue)}
 .mi.hol{background:none;color:var(--sun);font-weight:700;text-align:center}
@@ -237,7 +243,7 @@ const CONFIG={
   DB_URL:"https://ceo-schedule-51488-default-rtdb.asia-southeast1.firebasedatabase.app", // 대표님 전용 DB (비서실과 분리)
   PATH:"/ceo.json", LOCAL:"ceo_data"
 };
-const VER=19;
+const VER=22;
 const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -400,11 +406,13 @@ function virt(mk){
     const need=r.nths.length-real.length; if(need<=0)continue;
     r.nths.map(n=>1+((r.wd-first+7)%7)+7*(n-1)).filter(d=>d<=days).map(d=>`${mk}-${pad(d)}`)
       .filter(k=>!real.some(x=>x.date===k)&&!sk[`v:${k}|${r.name}`]).sort().slice(0,need)
-      .forEach(k=>out.push({id:`v:${k}|${r.name}`,date:k,type:"ceo",lines:r.name+(r.note?"\n"+r.note:""),virtual:true}));
+      .forEach(k=>out.push({id:`v:${k}|${r.name}`,date:k,type:"ceo",lines:r.name,virtual:true}));   // (박,나,박) 같은 괄호 내용은 달력에 적지 않습니다
   }
   return out;
 }
-const itemsOn=k=>state.items.filter(x=>x.date===k).concat(virt(k.slice(0,7)).filter(x=>x.date===k));
+// 같은 날에는 항상 대표님 일정이 맨 위, 그다음 손님방문·임시 라운딩·양도 순서
+const ORD={ceo:0,visit:1,tmp:2,tr:3};
+const itemsOn=k=>state.items.filter(x=>x.date===k).concat(virt(k.slice(0,7)).filter(x=>x.date===k)).sort((a,b)=>(ORD[a.type]??9)-(ORD[b.type]??9));
 const virtById=id=>virt(id.slice(2,9)).find(x=>x.id===id);
 
 /* ===== 도우미 ===== */
@@ -432,13 +440,14 @@ function evHTML(e){
   const [cl,nm]=CHIP[e.type]||CHIP.ceo;
   return `<div class="ev${e.virtual?" auto":""}" data-edit="${esc(e.id)}" tabindex="0"><span class="chip ${cl}">${nm}</span><div class="txt">${lines}</div></div>`;
 }
+const MLAB={ceo:"대표님",tmp:"임시",visit:"손님방문"};
 // 작은 달력 칸에 쓰는 짧은 글
 function abbr(e){
   const all=String(e.lines||""), L=all.split("\n"), tm=(all.match(/\d{1,2}:\d{2}/)||[""])[0];
   if(e.type==="ceo")return L[0];
   if(e.type==="tmp")return tm||"라운딩";
-  if(e.type==="visit")return tm?"방"+tm:"방문";
-  return personOf(e)||"양도";
+  if(e.type==="visit")return tm||L[0];
+  return personOf(e)||"";
 }
 // 양도 일정이 어느 골프장인지 (직접 고른 값이 우선, 없으면 글자에서 찾음)
 const normCourse=n=>/밀양/.test(n)?"밀양":/노벨/.test(n)?"노벨":String(n).replace(/\(.*?\)|cc|CC/g,"").trim();
@@ -481,7 +490,7 @@ function render(){
     const d=i-first+1, w=i%7;
     if(d<1||d>days){h+=`<div class="day empty"></div>`;continue}
     const k=`${y}-${pad(m+1)}-${pad(d)}`, hols=holsOn(k), ev=itemsOn(k).filter(x=>x.type!=="hol");
-    h+=`<div class="day ${dayCls(w,hols)}${k===today?" today":""}${k===sel?" sel":""}" data-d="${k}"><div class="num">${d}${hols.map(x=>`<span class="hl"${x.id?` data-edit="${x.id}"`:""}>${esc(x.name)}</span>`).join("")}<button class="add" data-add="${k}" aria-label="${d}일 일정 추가">+</button></div>${ev.map(evHTML).join("")}</div>`;
+    h+=`<div class="day ${dayCls(w,hols)}${k<today?" past":""}${k===today?" today":""}${k===sel?" sel":""}" data-d="${k}"><div class="num">${d}${hols.map(x=>`<span class="hl"${x.id?` data-edit="${x.id}"`:""}>${esc(x.name)}</span>`).join("")}<button class="add" data-add="${k}" aria-label="${d}일 일정 추가">+</button></div>${ev.map(evHTML).join("")}</div>`;
   }
   $("#cal").innerHTML=h;
   renderTable(`${y}-${pad(m+1)}`,m);
@@ -492,10 +501,13 @@ function render(){
 function renderTable(mk,m){
   $("#th2").textContent=`${m+1}월 양도 현황`;
   const red='style="color:var(--sun);font-weight:900"', full=(n,c)=>c>0&&n>=c;
-  const who=a=>a.map(x=>`${esc(personOf(x))}<small>(${+x.date.slice(8)}일)</small>`).join(", ");
-  $("#ttable").innerHTML=`<colgroup><col style="width:22%"><col style="width:13%"><col style="width:14%"><col></colgroup>`+
-    `<thead><tr><th>골프장</th><th>가능<br>주중/주말</th><th>사용<br>주중/주말</th><th>양도 받은 분·메모</th></tr></thead><tbody>`+
-    tableData(mk).map(r=>`<tr><th>${esc(r.name)}</th><td>${esc(r.capText)}</td><td><b ${full(r.wdN.length,r.cap[0])?red:""}>${r.wdN.length}</b>/<b ${full(r.weN.length,r.cap[1])?red:""}>${r.weN.length}</b></td><td class="left">${r.wdN.length?`<div><span class="k">주중</span>${who(r.wdN)}</div>`:""}${r.weN.length?`<div><span class="k">주말</span>${who(r.weN)}</div>`:""}${r.memo?`<div class="memo">${esc(r.memo)}</div>`:""}</td></tr>`).join("")+`</tbody>`;
+  const who=a=>a.map(x=>esc(personOf(x))).join(", ");
+  const cp=t=>{const a=String(t||"").split("/");return [a[0]||"",a[1]||""]};
+  $("#ttable").innerHTML=`<colgroup><col style="width:17%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:24%"><col style="width:23%"></colgroup>`+
+    `<thead><tr><th rowspan="2">골프장</th><th colspan="2">가능</th><th colspan="2">사용</th><th colspan="2">양도자</th></tr>`+
+    `<tr><th>주중</th><th>주말</th><th>주중</th><th>주말</th><th>주중</th><th>주말</th></tr></thead><tbody>`+
+    tableData(mk).map(r=>{const c=cp(r.capText);
+      return `<tr><th>${esc(r.name)}</th><td>${esc(c[0])}</td><td>${esc(c[1])}</td><td><b ${full(r.wdN.length,r.cap[0])?red:""}>${r.wdN.length}</b></td><td><b ${full(r.weN.length,r.cap[1])?red:""}>${r.weN.length}</b></td><td class="left">${who(r.wdN)}</td><td class="left">${who(r.weN)}</td></tr>`}).join("")+`</tbody>`;
   $("#tnote").textContent=noteOf(mk);
 }
 function renderRules(){
@@ -522,8 +534,8 @@ function renderMini(){
   for(let i=0;i<first;i++)h+=`<div class="mc empty"></div>`;
   for(let d=1;d<=days;d++){
     const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, hols=holsOn(k), ev=itemsOn(k).filter(x=>x.type!=="hol");
-    const txt=hols.map(x=>`<span class="mi hol">${esc(shortHol(x.name))}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}">${esc(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
-    h+=`<button type="button" class="mc ${dayCls(w,hols)}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
+    const txt=hols.map(x=>`<span class="mi hol">${esc(shortHol(x.name))}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}"><b>${esc(e.type==="tr"?dispLabel(e.label).replace("확정",""):MLAB[e.type])}</b><i>${esc(abbr(e))}</i></span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
+    h+=`<button type="button" class="mc ${dayCls(w,hols)}${k<today?" past":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
   }
   $("#mini").innerHTML=h;
 }
