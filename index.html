@@ -61,6 +61,25 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 12px;font-size:14px;color:var(--muted)}
 .legend i{display:inline-block;width:42px;height:18px;vertical-align:middle;margin-right:6px;border-radius:2px}
 
+/* 지시사항 */
+.notes{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.notes .nh{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.notes .nh h2{font-size:15px;margin:0;color:var(--muted)}
+.notes .nh .cnt{background:var(--sun);color:#fff;border-radius:10px;font-size:12px;font-weight:700;padding:0 8px}
+.notes .nh .btn{margin-left:auto}
+.nt{background:var(--bg);border-left:6px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px}
+.nt.new{border-left-color:var(--today)}
+.nt .tx{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}
+.nt.done .tx{text-decoration:line-through;color:var(--muted)}
+.nt .mt{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-top:6px;font-size:12px;color:var(--muted)}
+.nt .from{font-weight:700;border-radius:3px;padding:0 6px;color:var(--chip-fg)}
+.from.ceo{background:var(--ceo)} .from.sec{background:var(--tmp)}
+.nt .dt{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:0 8px;cursor:pointer;font-size:12px}
+.nt .acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.nt .acts .btn{padding:3px 10px;font-size:13px}
+.notes details{margin-top:8px;color:var(--muted);font-size:13px}
+.notes summary{cursor:pointer}
+
 /* 다가오는 일정 */
 .next{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:12px}
 .next h2{font-size:15px;margin:0 0 6px;color:var(--muted)}
@@ -122,6 +141,7 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .mc .mi{display:block;font-size:10px;line-height:1.35;padding:0 2px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--chip-fg)}
 .mc .mi b{display:block;font-size:8.5px;line-height:1.25;font-weight:700;overflow:hidden;text-overflow:ellipsis}
 .mc .mi i{display:block;font-style:normal;font-size:10px;line-height:1.25;overflow:hidden;text-overflow:ellipsis}
+.mc .mi i.s{font-size:9px;opacity:.9}
 .mi.ceo{background:var(--ceo)} .mi.tmp{background:var(--tmp)} .mi.visit{background:var(--visit)} .mi.q{color:var(--tr-red);font-weight:700}
 .mi.q.pink{background:var(--pink)} .mi.q.green{background:var(--green)} .mi.q.blue{background:var(--blue)}
 .mi.hol{background:none;color:var(--sun);font-weight:700;text-align:center}
@@ -194,6 +214,7 @@ td.left .memo{color:var(--muted)}
     <div class="meta"><span id="inputDate"></span><small id="sync"></small><small id="ver"></small></div>
   </header>
 
+  <div class="notes" id="noteBox"></div>
   <div class="next" id="nextBox"></div>
   <div id="dayBox"></div>
 
@@ -243,7 +264,7 @@ const CONFIG={
   DB_URL:"https://ceo-schedule-51488-default-rtdb.asia-southeast1.firebasedatabase.app", // 대표님 전용 DB (비서실과 분리)
   PATH:"/ceo.json", LOCAL:"ceo_data"
 };
-const VER=22;
+const VER=24;
 const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -363,6 +384,7 @@ function migrate(){
   if(!state.tables){state.tables={}; if(state.table)state.tables["2026-11"]=state.table+(state.tnote?"\n"+state.tnote:""); ch=true}
   if(!state.migDec){state.items.push(...decItems()); state.tables["2026-12"]=DEC_TABLE; state.migDec=1; ch=true}
   if(state.rules==null){state.rules=DEFAULT_RULES; ch=true}
+  if(!Array.isArray(state.notes)){state.notes=[]; ch=true}
   return ch;
 }
 // 그 달의 양도 현황 글 (없으면 앞 달의 골프장·가능 횟수만 가져옴)
@@ -442,12 +464,15 @@ function evHTML(e){
 }
 const MLAB={ceo:"대표님",tmp:"임시",visit:"손님방문"};
 // 작은 달력 칸에 쓰는 짧은 글
+// 두 줄로 돌려줍니다: [위 줄(이름·시간), 아래 줄(시간·장소 등)]
 function abbr(e){
-  const all=String(e.lines||""), L=all.split("\n"), tm=(all.match(/\d{1,2}:\d{2}/)||[""])[0];
-  if(e.type==="ceo")return L[0];
-  if(e.type==="tmp")return tm||"라운딩";
-  if(e.type==="visit")return tm||L[0];
-  return personOf(e)||"";
+  const L=String(e.lines||"").split("\n").map(s=>s.trim()).filter(Boolean), all=L.join(" "), tm=(all.match(/\d{1,2}:\d{2}/)||[""])[0];
+  const strip=s=>s.replace(/\d{1,2}:\d{2}/g,"").replace(/"[^"]*"/g,"").replace(/\s+/g," ").trim();
+  // 달력 칸에는 골프장 이름과 코스를 적지 않고 시간만 보여줍니다
+  if(e.type==="ceo")return [L[0]||"",tm];
+  if(e.type==="tmp")return [tm||"라운딩",""];
+  if(e.type==="visit")return [tm||L[0]||"",strip(L[0]||"")];
+  return [personOf(e)||"",tm];
 }
 // 양도 일정이 어느 골프장인지 (직접 고른 값이 우선, 없으면 글자에서 찾음)
 const normCourse=n=>/밀양/.test(n)?"밀양":/노벨/.test(n)?"노벨":String(n).replace(/\(.*?\)|cc|CC/g,"").trim();
@@ -495,7 +520,7 @@ function render(){
   $("#cal").innerHTML=h;
   renderTable(`${y}-${pad(m+1)}`,m);
   renderRules();
-  renderNext(); renderDay(); renderMini();
+  renderNotes(); renderNext(); renderDay(); renderMini();
 }
 // 양도 현황: 달력의 양도 일정을 자동으로 세고, 가능 횟수를 채우면 그 숫자가 빨간색 (주중·주말 따로)
 function renderTable(mk,m){
@@ -512,6 +537,39 @@ function renderTable(mk,m){
 }
 function renderRules(){
   $("#rules").innerHTML=String(state.rules||"").split("\n").filter(Boolean).map(l=>{const [a,...r]=l.split("|");return `<div class="rl"><b>${esc(a)}</b><span>${esc(r.join("|"))}</span></div>`}).join("");
+}
+/* ===== 지시사항 (대표님 ↔ 비서실) ===== */
+const FROM={ceo:"대표님",sec:"비서실"};
+let delNote="";
+const fmtAt=iso=>{const d=new Date(iso);return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`};
+function noteHTML(n){
+  const dt=n.date?`<button type="button" class="dt" data-sel="${esc(n.date)}">📅 ${+n.date.slice(5,7)}/${+n.date.slice(8)}</button>`:"";
+  const acts=n.done?`<button type="button" class="btn" data-nact="undo" data-nid="${n.id}">되돌리기</button>`
+    :`${n.seen?"":`<button type="button" class="btn" data-nact="seen" data-nid="${n.id}">확인했습니다</button>`}<button type="button" class="btn" data-nact="done" data-nid="${n.id}">완료</button>`;
+  return `<div class="nt${n.seen?"":" new"}${n.done?" done":""}"><div class="tx">${esc(n.text)}</div><div class="mt"><span class="from ${esc(n.from)}">${FROM[n.from]||""}</span>${dt}<span>${fmtAt(n.at)}${n.seen&&!n.done?" · 확인됨":""}</span><span class="acts">${acts}<button type="button" class="btn" data-nact="del" data-nid="${n.id}" style="color:var(--sun)">${delNote===n.id?"정말 삭제":"삭제"}</button></span></div></div>`;
+}
+function renderNotes(){
+  const all=(state.notes||[]).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  const act=all.filter(n=>!n.done), dn=all.filter(n=>n.done), unseen=act.filter(n=>!n.seen).length;
+  $("#noteBox").innerHTML=`<div class="nh"><h2>지시사항</h2>${unseen?`<span class="cnt">새 글 ${unseen}</span>`:""}<button type="button" class="btn primary sm" id="noteAdd">+ 남기기</button></div>`+
+    (act.length?act.map(noteHTML).join(""):`<div class="empty-note">남겨진 지시사항이 없습니다.</div>`)+
+    (dn.length?`<details><summary>완료된 지시사항 ${dn.length}개</summary>${dn.map(noteHTML).join("")}</details>`:"");
+  $("#noteAdd").onclick=openNote;
+}
+function openNote(){
+  let last="ceo"; try{last=localStorage.getItem("ceo_from")||"ceo"}catch{}
+  $("#modal").innerHTML=`<form><h3>지시사항 남기기</h3>
+    <label>남기는 사람<select name="from"><option value="ceo" ${last==="ceo"?"selected":""}>대표님</option><option value="sec" ${last==="sec"?"selected":""}>비서실</option></select></label>
+    <label>내용<textarea name="text" rows="4" required placeholder="예: 12/3 제주회 시간 확인해 주세요"></textarea></label>
+    <label>관련 날짜 (없으면 비워 두세요)<input type="date" name="date"></label>
+    <div class="row"><button type="button" class="btn" id="cancel">취소</button><button class="btn primary">남기기</button></div></form>`;
+  $("#modal").hidden=false; $("#cancel").onclick=()=>$("#modal").hidden=true;
+  $("#modal form").onsubmit=e=>{e.preventDefault();
+    const v=Object.fromEntries(new FormData(e.target));
+    state.notes=state.notes||[];
+    state.notes.push({id:uid(),text:String(v.text).trim(),from:v.from,date:v.date||"",at:new Date().toISOString(),seen:false,done:false});
+    try{localStorage.setItem("ceo_from",v.from)}catch{}
+    $("#modal").hidden=true; save()};
 }
 function renderNext(){
   const t0=ymd(new Date()), base=new Date(t0+"T00:00:00");
@@ -534,7 +592,7 @@ function renderMini(){
   for(let i=0;i<first;i++)h+=`<div class="mc empty"></div>`;
   for(let d=1;d<=days;d++){
     const k=`${y}-${pad(m+1)}-${pad(d)}`, w=(first+d-1)%7, hols=holsOn(k), ev=itemsOn(k).filter(x=>x.type!=="hol");
-    const txt=hols.map(x=>`<span class="mi hol">${esc(shortHol(x.name))}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}"><b>${esc(e.type==="tr"?dispLabel(e.label).replace("확정",""):MLAB[e.type])}</b><i>${esc(abbr(e))}</i></span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
+    const txt=hols.map(x=>`<span class="mi hol">${esc(shortHol(x.name))}</span>`).join("")+ev.slice(0,3).map(e=>`<span class="mi ${e.type==="tr"?"q "+trColor(e):e.type}"><b>${esc(e.type==="tr"?dispLabel(e.label).replace("확정",""):MLAB[e.type])}</b>${(a=>`<i>${esc(a[0])}</i>${a[1]?`<i class="s">${esc(a[1])}</i>`:""}`)(abbr(e))}</span>`).join("")+(ev.length>3?`<span class="more">+${ev.length-3}</span>`:"");
     h+=`<button type="button" class="mc ${dayCls(w,hols)}${k<today?" past":""}${k===today?" today":""}${k===sel?" sel":""}" data-sel="${k}"><span class="n">${d}</span>${txt}</button>`;
   }
   $("#mini").innerHTML=h;
@@ -650,6 +708,9 @@ async function exportXlsx(){
     const ws3=XLSX.utils.aoa_to_sheet([["모임","일정"],...String(state.rules||"").split("\n").filter(Boolean).map(l=>{const [a,...r]=l.split("|");return [a,r.join("|")]})]);
     ws3["!cols"]=[{wch:12},{wch:34}];
     XLSX.utils.book_append_sheet(wb,ws3,"정기 모임");
+    const ws4=XLSX.utils.aoa_to_sheet([["남긴 때","남긴 사람","내용","관련 날짜","상태"],...(state.notes||[]).map(n=>[fmtAt(n.at),FROM[n.from]||"",n.text,n.date||"",n.done?"완료":n.seen?"확인됨":"새 글"])]);
+    ws4["!cols"]=[{wch:14},{wch:10},{wch:50},{wch:12},{wch:8}];
+    XLSX.utils.book_append_sheet(wb,ws4,"지시사항");
     XLSX.writeFile(wb,`대표님_스케줄_${ymd(new Date())}.xlsx`);
   }catch{ exportCsv() }   // 엑셀 도구를 못 불러오면 CSV(엑셀로 열림)로 대신 받습니다
   btn.disabled=false; btn.textContent="엑셀 다운로드";
@@ -680,6 +741,15 @@ function askRestore(file){
 
 /* ===== 이벤트 ===== */
 document.addEventListener("click",e=>{
+  const na=e.target.closest("[data-nact]");
+  if(na){
+    const n=(state.notes||[]).find(x=>x.id===na.dataset.nid); if(!n)return;
+    const a=na.dataset.nact;
+    if(a==="seen")n.seen=true;
+    else if(a==="done"){n.done=true;n.seen=true}
+    else if(a==="undo")n.done=false;
+    else if(a==="del"){ if(delNote===n.id){state.notes=state.notes.filter(x=>x!==n);delNote=""} else{delNote=n.id;return renderNotes()} }
+    return save()}
   const n=e.target.closest("[data-nav]");
   if(n){const k=n.dataset.nav;
     if(k==="prev")cur.setMonth(cur.getMonth()-1); else if(k==="next")cur.setMonth(cur.getMonth()+1);
