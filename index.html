@@ -264,7 +264,7 @@ const CONFIG={
   DB_URL:"https://ceo-schedule-51488-default-rtdb.asia-southeast1.firebasedatabase.app", // 대표님 전용 DB (비서실과 분리)
   PATH:"/ceo.json", LOCAL:"ceo_data"
 };
-const VER=25;
+const VER=26;
 const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -556,11 +556,11 @@ function renderMini(){
 }
 
 /* ===== 날씨 (Open-Meteo, 무료·키 없음) ===== */
-const WPLACES={"고성":[34.97,128.32],"김해":[35.23,128.88],"밀양":[35.50,128.75],"창원":[35.23,128.68],"진주":[35.18,128.11],"부산":[35.18,129.08],"제주":[33.50,126.53]};
-const WKEYS=[["밀양","밀양"],["포웰","김해"],["창원","창원"],["진주","진주"],["제주","제주"],["부산","부산"],["노벨","고성"]];
+const WPLACES={"고성":[34.97,128.32],"김해":[35.23,128.88],"밀양":[35.50,128.75],"창원":[35.23,128.68],"진주":[35.18,128.11],"부산":[35.18,129.08],"제주":[33.50,126.53],"거제":[34.88,128.62]};
+const WKEYS=[["밀양","밀양"],["포웰","김해"],["창원","창원"],["진주","진주"],["제주","제주"],["부산","부산"],["드비치","거제"],["노벨","고성"]];
 const WCODE=c=>c===0?["☀️","맑음"]:c<=2?["🌤️","구름 조금"]:c===3?["☁️","흐림"]:c<=48?["🌫️","안개"]:c<=57?["🌦️","이슬비"]:c<=67?["🌧️","비"]:c<=77?["❄️","눈"]:c<=82?["🌦️","소나기"]:["⛈️","뇌우"];
 const wcache={}; let wover="";
-function wplace(ev){const t=ev.map(e=>e.lines||"").join(" ");for(const [k,p] of WKEYS)if(t.includes(k))return p;return "고성"}
+function wplace(ev){const t=ev.map(e=>e.lines||"").join(" ").replace(/제주회/g,"");for(const [k,p] of WKEYS)if(t.includes(k))return p;return "창원"}
 async function getW(p){
   if(wcache[p])return wcache[p];
   const [la,lo]=WPLACES[p];
