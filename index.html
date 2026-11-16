@@ -79,6 +79,13 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .nt .acts .btn{padding:3px 10px;font-size:13px}
 .notes details{margin-top:8px;color:var(--muted);font-size:13px}
 .notes summary{cursor:pointer}
+.nt .nhd{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;min-width:0}
+.nt .ttl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:700}
+.nt.done .ttl{text-decoration:line-through;color:var(--muted);font-weight:400}
+.nt .carry{font-size:11px;color:var(--sun);white-space:nowrap}
+.nt .arr{color:var(--muted);font-size:12px}
+.nt .body{margin-top:6px}
+.njump{border:0;background:var(--sun);color:#fff;border-radius:10px;font-size:12px;font-weight:700;padding:1px 8px;margin-left:6px;cursor:pointer}
 
 /* 다가오는 일정 */
 .next{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:12px}
@@ -104,6 +111,7 @@ h1{margin:0;font-size:clamp(20px,3.2vw,34px);font-weight:900}
 .today .num::after{content:"오늘";order:1;font-size:12px;font-weight:700;background:var(--today);color:#111;border-radius:3px;padding:1px 6px}
 .ev{display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:start;padding:1px 0;font-size:16px;line-height:1.35;cursor:pointer}
 .ev:hover{background:var(--head)}
+.dn{display:inline-block;font-size:12px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:0 7px;margin-top:2px}
 /* 지난 날은 흐리게 (오늘과 앞으로의 일정이 눈에 띄도록) */
 .day.past .ev,.day.past .tr,.day.past .num{opacity:.4}
 .mc.past{opacity:.5}
@@ -211,10 +219,9 @@ td.left .memo{color:var(--muted)}
       <button class="btn" data-nav="next" aria-label="다음 달">›</button>
       <button class="btn" data-nav="today">오늘</button>
     </div>
-    <div class="meta"><span id="inputDate"></span><small id="sync"></small><small id="ver"></small></div>
+    <div class="meta"><span id="inputDate"></span><small id="sync"></small><button type="button" class="njump" id="noteJump" hidden></button><small id="ver"></small></div>
   </header>
 
-  <div class="notes" id="noteBox"></div>
   <div class="next" id="nextBox"></div>
   <div id="dayBox"></div>
 
@@ -243,6 +250,8 @@ td.left .memo{color:var(--muted)}
   <div class="cal" id="cal"></div>
   <div class="mini" id="mini"></div>
 
+  <div class="notes" id="noteBox"></div>
+
   <section class="lower">
     <div class="sec-h"><h2 id="th2">양도 현황</h2><button class="btn sm" id="editTable">수정</button></div>
     <table id="ttable"></table>
@@ -264,7 +273,7 @@ const CONFIG={
   DB_URL:"https://ceo-schedule-51488-default-rtdb.asia-southeast1.firebasedatabase.app", // 대표님 전용 DB (비서실과 분리)
   PATH:"/ceo.json", LOCAL:"ceo_data"
 };
-const VER=26;
+const VER=29;
 const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -305,7 +314,7 @@ const dayCls=(w,hols)=>(hols.length||w===0)?"sun":(w===6?"sat":"");
 /* ===== 처음 들어갈 내용 ===== */
 const DEFAULT_RULES="";
 function seed(){
-  return {items:[], updated:"", tables:{}, rules:"", notes:[], migDec:1};
+  return {items:[], updated:"", tables:{}, rules:"", notes:[], migDec:1, sv:2};
 }
 function decItems(){return []}
 const DEC_TABLE="";
@@ -327,13 +336,12 @@ async function load(){
   let local=null;try{local=JSON.parse(localStorage.getItem(CONFIG.LOCAL)||"null")}catch{}
   state=local&&local.items?local:seed();
   if(CONFIG.DB_URL){
-    try{const d=await(await fetch(CONFIG.DB_URL+CONFIG.PATH)).json();
-      if(d&&d.items)state=d; else await push();
+    try{await syncMerge();
       dbOk=true;
       $("#sync").textContent="🟢 공유 연결됨";}
     catch{$("#sync").textContent="🔴 공유 연결 실패 (이 기기에만 저장)"}
   }else $("#sync").textContent="이 기기에만 저장";
-  if(migrate()){saveLocal(); if(CONFIG.DB_URL&&dbOk){try{await push()}catch{}}}
+  if(migrate()){saveLocal(); if(CONFIG.DB_URL&&dbOk){try{await syncMerge()}catch{}}}
 }
 // 달마다 양도 현황을 따로 두고, 12월 내용·정기 모임을 한 번만 넣습니다
 function migrate(){
@@ -342,6 +350,7 @@ function migrate(){
   if(!state.migDec){state.items.push(...decItems()); state.tables["2026-12"]=DEC_TABLE; state.migDec=1; ch=true}
   if(state.rules==null){state.rules=DEFAULT_RULES; ch=true}
   if(!Array.isArray(state.notes)){state.notes=[]; ch=true}
+  if(state.sv!==2){state.sv=2; ch=true}
   return ch;
 }
 // 그 달의 양도 현황 글 (없으면 앞 달의 골프장·가능 횟수만 가져옴)
@@ -352,14 +361,50 @@ function tableOf(mk){
   return String(prev?T[prev]:(state.table||"")).split("\n").filter(l=>l&&!l.startsWith("*")).map(l=>{const a=l.split("|");return [a[0],a[1]||"",a[2]||"",""].join("|")}).join("\n");
 }
 const noteOf=mk=>tableOf(mk).split("\n").filter(l=>l.startsWith("*")).join("   ");
-async function push(){await fetch(CONFIG.DB_URL+CONFIG.PATH,{method:"PUT",body:JSON.stringify(state)})}
+/* ===== 동시에 고쳐도 서로 덮어쓰지 않게 합치기 =====
+   일정·지시사항은 하나씩 '마지막으로 고친 시각(u)'을 갖고, 지운 것은 '삭제 기록(del)'으로 남깁니다.
+   저장할 때마다 서버 내용을 먼저 받아 합친 뒤 올리고, 15초마다도 같은 방식으로 맞춥니다.
+   그래서 두 사람이 거의 동시에 고쳐도 서로의 변경이 모두 남습니다. */
+const canon=o=>JSON.stringify(o,(k,v)=>{   // 키 순서·빈 값 차이는 무시하고 비교 (서버는 빈 목록을 저장하지 않음)
+  if(v&&typeof v==="object"){
+    if(Array.isArray(v))return v.length?v:undefined;
+    const ks=Object.keys(v); if(!ks.length)return undefined;
+    return ks.sort().reduce((r,x)=>(r[x]=v[x],r),{});
+  }
+  return v});
+function mergeStates(a,b){          // a = 이 기기 내용, b = 서버 내용
+  if(!b||!Array.isArray(b.items))return a;
+  if(!b.sv)return {...b,sv:2};      // 이전 방식으로 저장된 서버 내용은 그대로 이어받음 (처음 한 번)
+  if(a.sv!==2)return b;
+  const now=Date.now(), KEEP=90*864e5;
+  const del={}; for(const src of [b.del||{},a.del||{}])for(const [k,v] of Object.entries(src))if(now-v<KEEP)del[k]=Math.max(del[k]||0,v);
+  const pick=(la,lb)=>{const m=new Map();
+    for(const x of [...(lb||[]),...(la||[])]){const o=m.get(x.id); if(!o||(x.u||0)>=(o.u||0))m.set(x.id,x)}
+    return [...m.values()].filter(x=>!(x.id in del)||(x.u||0)>del[x.id])};
+  const out={...b,...a,sv:2};
+  out.items=pick(a.items,b.items); out.notes=pick(a.notes,b.notes); out.del=del;
+  out.skips={...(b.skips||{}),...(a.skips||{})};
+  const ma=a.tmeta||{}, mb=b.tmeta||{}; out.tmeta={...mb}; for(const [k,v] of Object.entries(ma))out.tmeta[k]=Math.max(out.tmeta[k]||0,v);
+  out.tables={...(b.tables||{})}; for(const [k,v] of Object.entries(a.tables||{}))if(!(k in out.tables)||(ma["t:"+k]||0)>=(mb["t:"+k]||0))out.tables[k]=v;
+  out.rules=(ma.rules||0)>=(mb.rules||0)?a.rules:b.rules;
+  out.updated=[a.updated,b.updated].sort().pop()||"";
+  return out;
+}
+async function pull(){const r=await fetch(CONFIG.DB_URL+CONFIG.PATH); if(!r.ok)throw new Error("get "+r.status); return r.json()}
+async function push(){const r=await fetch(CONFIG.DB_URL+CONFIG.PATH,{method:"PUT",body:JSON.stringify(state)}); if(!r.ok)throw new Error("put "+r.status)}
+// 서버 내용과 합치고, 서버에 없는 변경이 있으면 합친 내용을 다시 올립니다. 화면 내용이 바뀌었으면 true
+async function syncMerge(){
+  const remote=await pull(), before=canon(state);
+  state=mergeStates(state,remote);
+  if(!remote||canon(state)!==canon(remote))await push();
+  return canon(state)!==before;
+}
 async function save(){
   state.updated=ymd(new Date()); saveLocal(); render();
-  if(CONFIG.DB_URL){try{await push();$("#sync").textContent="🟢 공유 연결됨"}catch{$("#sync").textContent="🔴 공유 저장 실패 (이 기기에는 저장됨)"}}
+  if(CONFIG.DB_URL){try{ if(await syncMerge()){saveLocal();render()} $("#sync").textContent="🟢 공유 연결됨"}catch{$("#sync").textContent="🔴 공유 저장 실패 (이 기기에는 저장됨)"}}
 }
-setInterval(async()=>{ if(!CONFIG.DB_URL||!state||!$("#modal").hidden)return;
-  try{const d=await(await fetch(CONFIG.DB_URL+CONFIG.PATH)).json();
-    if(d&&d.items&&JSON.stringify(d)!==JSON.stringify(state)){state=d;migrate();saveLocal();render()}}catch{}},15000);
+setInterval(async()=>{ if(!CONFIG.DB_URL||!state||!dbOk||!$("#modal").hidden)return;
+  try{ if(await syncMerge()){migrate();saveLocal();render()} }catch{}},15000);
 
 /* ===== 정기 모임 자동 일정 (예: "첫째 주 목요일" → 매달 그 날짜에 자동으로 나타남) ===== */
 const WD={일:0,월:1,화:2,수:3,목:4,금:5,토:6}, NTH={첫째:1,둘째:2,셋째:3,넷째:4,다섯째:5};
@@ -391,7 +436,13 @@ function virt(mk){
 }
 // 같은 날에는 항상 대표님 일정이 맨 위, 그다음 손님방문·임시 라운딩·양도 순서
 const ORD={ceo:0,visit:1,tmp:2,tr:3};
-const itemsOn=k=>state.items.filter(x=>x.date===k).concat(virt(k.slice(0,7)).filter(x=>x.date===k)).sort((a,b)=>(ORD[a.type]??9)-(ORD[b.type]??9));
+// 며칠 이어지는 일정(종료일이 있는 일정)은 시작일부터 종료일까지 매일 나오고, "2/4일째"처럼 몇 번째 날인지 붙습니다
+const dayDiff=(a,b)=>Math.round((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/864e5);
+const itemsOn=k=>{
+  const real=state.items.filter(x=>x.date<=k&&(x.end||x.date)>=k).map(x=>
+    (!x.end||x.end<=x.date)?x:{...x,_day:dayDiff(x.date,k)+1,_len:dayDiff(x.date,x.end)+1});
+  return real.concat(virt(k.slice(0,7)).filter(x=>x.date===k)).sort((a,b)=>(ORD[a.type]??9)-(ORD[b.type]??9));
+};
 const virtById=id=>virt(id.slice(2,9)).find(x=>x.id===id);
 
 /* ===== 도우미 ===== */
@@ -417,7 +468,7 @@ function evHTML(e){
   }
   const lines=String(e.lines||"").split("\n").map(s=>`<div>${esc(s)}</div>`).join("");
   const [cl,nm]=CHIP[e.type]||CHIP.ceo;
-  return `<div class="ev${e.virtual?" auto":""}" data-edit="${esc(e.id)}" tabindex="0"><span class="chip ${cl}">${nm}</span><div class="txt">${lines}</div></div>`;
+  return `<div class="ev${e.virtual?" auto":""}" data-edit="${esc(e.id)}" tabindex="0"><span class="chip ${cl}">${nm}</span><div class="txt">${lines}${e._len>1?`<span class="dn">${e._day}/${e._len}일째</span>`:""}</div></div>`;
 }
 const MLAB={ceo:"대표님",tmp:"임시",visit:"손님방문"};
 // 작은 달력 칸에 쓰는 짧은 글
@@ -425,6 +476,8 @@ const MLAB={ceo:"대표님",tmp:"임시",visit:"손님방문"};
 function abbr(e){
   const L=String(e.lines||"").split("\n").map(s=>s.trim()).filter(Boolean), all=L.join(" "), tm=(all.match(/\d{1,2}:\d{2}/)||[""])[0];
   const strip=s=>s.replace(/\d{1,2}:\d{2}/g,"").replace(/"[^"]*"/g,"").replace(/\s+/g," ").trim();
+  // 며칠 이어지는 일정: 아래 줄에 "2/4일"처럼 몇 번째 날인지 (첫날에는 시간도)
+  if(e._len>1&&e.type!=="tr")return [L[0]||"",(e._day===1&&tm?tm+" ":"")+e._day+"/"+e._len+"일"];
   // 달력 칸에는 골프장 이름과 코스를 적지 않고 시간만 보여줍니다
   if(e.type==="ceo")return [L[0]||"",tm];
   if(e.type==="tmp")return [tm||"라운딩",""];
@@ -499,32 +552,48 @@ function renderRules(){
 const FROM={ceo:"대표님",sec:"비서실"};
 let delNote="";
 const fmtAt=iso=>{const d=new Date(iso);return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`};
-function noteHTML(n){
+const openNotes=new Set();
+const monthOf=iso=>{const d=new Date(iso);return isNaN(d)?"":`${d.getFullYear()}-${pad(d.getMonth()+1)}`};
+// 보고 있는 달(mk)에 나올 지시사항: 그 달에 적은 것 + 이전 달에 적었지만 아직 완료 안 된 것
+// 완료한 것은 적은 달부터 완료한 달까지만 보입니다.
+function notesFor(mk){
+  return (state.notes||[]).filter(n=>{const wm=monthOf(n.at); if(!wm||wm>mk)return false;
+    if(!n.done)return true; const dm=n.doneAt?monthOf(n.doneAt):wm; return mk<=dm});
+}
+function noteHTML(n,mk){
   const dt=n.date?`<button type="button" class="dt" data-sel="${esc(n.date)}">📅 ${+n.date.slice(5,7)}/${+n.date.slice(8)}</button>`:"";
   const acts=n.done?`<button type="button" class="btn" data-nact="undo" data-nid="${n.id}">되돌리기</button>`
     :`${n.seen?"":`<button type="button" class="btn" data-nact="seen" data-nid="${n.id}">확인했습니다</button>`}<button type="button" class="btn" data-nact="done" data-nid="${n.id}">완료</button>`;
-  return `<div class="nt${n.seen?"":" new"}${n.done?" done":""}"><div class="tx">${esc(n.text)}</div><div class="mt"><span class="from ${esc(n.from)}">${FROM[n.from]||""}</span>${dt}<span>${fmtAt(n.at)}${n.seen&&!n.done?" · 확인됨":""}</span><span class="acts">${acts}<button type="button" class="btn" data-nact="del" data-nid="${n.id}" style="color:var(--sun)">${delNote===n.id?"정말 삭제":"삭제"}</button></span></div></div>`;
+  const title=String(n.text||"").split("\n").find(l=>l.trim())||"(내용 없음)";
+  const wm=monthOf(n.at), carry=!n.done&&wm<mk?`<span class="carry">${+wm.slice(5)}월부터</span>`:"";
+  const op=openNotes.has(n.id);
+  return `<div class="nt${n.seen?"":" new"}${n.done?" done":""}"><button type="button" class="nhd" data-nopen="${n.id}" aria-expanded="${op}"><span class="from ${esc(n.from)}">${FROM[n.from]||""}</span><span class="ttl">${esc(title)}</span>${carry}<span class="arr">${op?"▲":"▼"}</span></button>`+
+    (op?`<div class="body"><div class="tx">${esc(n.text)}</div><div class="mt">${dt}<span>${fmtAt(n.at)}${n.seen&&!n.done?" · 확인됨":""}${n.done&&n.doneAt?" · 완료 "+fmtAt(n.doneAt):""}</span><span class="acts">${acts}<button type="button" class="btn" data-nact="del" data-nid="${n.id}" style="color:var(--sun)">${delNote===n.id?"정말 삭제":"삭제"}</button></span></div></div>`:"")+`</div>`;
 }
 function renderNotes(){
-  const all=(state.notes||[]).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  const mk=`${cur.getFullYear()}-${pad(cur.getMonth()+1)}`;
+  const all=notesFor(mk).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
   const act=all.filter(n=>!n.done), dn=all.filter(n=>n.done), unseen=act.filter(n=>!n.seen).length;
-  $("#noteBox").innerHTML=`<div class="nh"><h2>지시사항</h2>${unseen?`<span class="cnt">새 글 ${unseen}</span>`:""}<button type="button" class="btn primary sm" id="noteAdd">+ 남기기</button></div>`+
-    (act.length?act.map(noteHTML).join(""):`<div class="empty-note">남겨진 지시사항이 없습니다.</div>`)+
-    (dn.length?`<details><summary>완료된 지시사항 ${dn.length}개</summary>${dn.map(noteHTML).join("")}</details>`:"");
+  $("#noteBox").innerHTML=`<div class="nh"><h2>${cur.getMonth()+1}월 지시사항</h2>${unseen?`<span class="cnt">새 글 ${unseen}</span>`:""}<button type="button" class="btn primary sm" id="noteAdd">+ 남기기</button></div>`+
+    (act.length?act.map(n=>noteHTML(n,mk)).join(""):`<div class="empty-note">남겨진 지시사항이 없습니다.</div>`)+
+    (dn.length?`<details${dn.some(n=>openNotes.has(n.id))?" open":""}><summary>완료된 지시사항 ${dn.length}개</summary>${dn.map(n=>noteHTML(n,mk)).join("")}</details>`:"");
   $("#noteAdd").onclick=openNote;
+  const allNew=(state.notes||[]).filter(n=>!n.done&&!n.seen).length, j=$("#noteJump");
+  j.hidden=!allNew; j.textContent=`지시사항 새 글 ${allNew}`;
+  j.onclick=()=>{cur=new Date();cur.setDate(1);render();$("#noteBox").scrollIntoView({behavior:"smooth"})};
 }
 function openNote(){
   let last="ceo"; try{last=localStorage.getItem("ceo_from")||"ceo"}catch{}
   $("#modal").innerHTML=`<form><h3>지시사항 남기기</h3>
     <label>남기는 사람<select name="from"><option value="ceo" ${last==="ceo"?"selected":""}>대표님</option><option value="sec" ${last==="sec"?"selected":""}>비서실</option></select></label>
-    <label>내용<textarea name="text" rows="4" required placeholder="예: 12/3 OO모임 시간 확인해 주세요"></textarea></label>
+    <label>내용 (첫 줄이 제목으로 보입니다)<textarea name="text" rows="4" required placeholder="예: 12/3 OO모임 시간 확인&#10;세부 내용은 둘째 줄부터"></textarea></label>
     <label>관련 날짜 (없으면 비워 두세요)<input type="date" name="date"></label>
     <div class="row"><button type="button" class="btn" id="cancel">취소</button><button class="btn primary">남기기</button></div></form>`;
   $("#modal").hidden=false; $("#cancel").onclick=()=>$("#modal").hidden=true;
   $("#modal form").onsubmit=e=>{e.preventDefault();
     const v=Object.fromEntries(new FormData(e.target));
     state.notes=state.notes||[];
-    state.notes.push({id:uid(),text:String(v.text).trim(),from:v.from,date:v.date||"",at:new Date().toISOString(),seen:false,done:false});
+    state.notes.push({id:uid(),text:String(v.text).trim(),from:v.from,date:v.date||"",at:new Date().toISOString(),seen:false,done:false,u:Date.now()});
     try{localStorage.setItem("ceo_from",v.from)}catch{}
     $("#modal").hidden=true; save()};
 }
@@ -560,7 +629,8 @@ const WPLACES={"고성":[34.97,128.32],"김해":[35.23,128.88],"밀양":[35.50,1
 const WKEYS=[["밀양","밀양"],["포웰","김해"],["창원","창원"],["진주","진주"],["제주","제주"],["부산","부산"],["드비치","거제"],["노벨","고성"]];
 const WCODE=c=>c===0?["☀️","맑음"]:c<=2?["🌤️","구름 조금"]:c===3?["☁️","흐림"]:c<=48?["🌫️","안개"]:c<=57?["🌦️","이슬비"]:c<=67?["🌧️","비"]:c<=77?["❄️","눈"]:c<=82?["🌦️","소나기"]:["⛈️","뇌우"];
 const wcache={}; let wover="";
-function wplace(ev){const t=ev.map(e=>e.lines||"").join(" ").replace(/제주회/g,"");for(const [k,p] of WKEYS)if(t.includes(k))return p;return "창원"}
+// 대표님 본인 일정(대표님 일정 → 임시 라운딩 순)만 보고 지역을 정합니다. 양도(다른 분 라운딩)·공휴일은 보지 않습니다.
+function wplace(ev){for(const ty of ["ceo","tmp"]){const t=ev.filter(e=>e.type===ty).map(e=>e.lines||"").join(" ").replace(/제주회/g,"");for(const [k,p] of WKEYS)if(t.includes(k))return p}return "창원"}
 async function getW(p){
   if(wcache[p])return wcache[p];
   const [la,lo]=WPLACES[p];
@@ -570,7 +640,7 @@ async function getW(p){
 }
 async function renderWx(){
   const box=$("#wx"); if(!box)return; const day=sel;
-  const p=wover||wplace(state.items.filter(x=>x.date===day));
+  const p=wover||wplace(itemsOn(day));
   const pick=`<select id="wsel" aria-label="날씨 지역">${Object.keys(WPLACES).map(k=>`<option ${k===p?"selected":""}>${k}</option>`).join("")}</select>`;
   try{
     const w=(await getW(p))[day]; if(day!==sel)return;
@@ -594,6 +664,7 @@ function openForm(id,date){
     ${auto?`<p style="margin:0;font-size:13px;color:var(--muted)">정기 모임에서 자동으로 채워진 일정입니다. 이 달만 날짜를 옮기려면 날짜를 바꿔서 저장하세요. 이 날 모임이 없으면 아래 '이 날 모임 없음'을 누르세요.</p>`:""}
     <label>구분<select name="type" id="ftype">${sel2(TYPES,it.type)}</select></label>
     <label>날짜<input type="date" name="date" required value="${esc(it.date)}"></label>
+    <label id="endlbl" ${it.type==="tr"?"hidden":""}>종료일 (며칠 이어지는 일정만, 아니면 비워 두세요)<input type="date" name="end" value="${esc(it.end||"")}"></label>
     <label>내용 (줄바꿈으로 여러 줄)<textarea name="lines" rows="4" required placeholder="예: 노벨cc 08:34 홍길동&#10;충무코스&quot;노캐디&quot;">${esc(it.lines||"")}</textarea></label>
     <div id="trbox" ${it.type==="tr"?"":"hidden"} style="display:grid;gap:10px">
       <label>골프장 (양도 현황에 자동으로 반영됩니다)<select name="course">${courses.map(n=>`<option ${n===curCourse?"selected":""}>${esc(n)}</option>`).join("")}</select></label>
@@ -606,21 +677,22 @@ function openForm(id,date){
       <button type="button" class="btn" id="cancel">취소</button><button class="btn primary">저장</button></div></form>`;
   $("#modal").hidden=false;
   const f=$("#modal form");
-  $("#ftype").onchange=e=>{$("#trbox").hidden=e.target.value!=="tr"};
+  $("#ftype").onchange=e=>{$("#trbox").hidden=e.target.value!=="tr";$("#endlbl").hidden=e.target.value==="tr"};
   $("#cancel").onclick=()=>$("#modal").hidden=true;
   if(id)$("#del").onclick=()=>{if($("#del").dataset.ok){
-      if(auto){state.skips=state.skips||{};state.skips[id]=1}else state.items=state.items.filter(x=>x.id!==id);
+      if(auto){state.skips=state.skips||{};state.skips[id]=1}else{state.items=state.items.filter(x=>x.id!==id);(state.del=state.del||{})[id]=Date.now()}
       $("#modal").hidden=true;save()}
     else{$("#del").dataset.ok=1;$("#del").textContent="한 번 더 누르면 "+(auto?"모임 없음":"삭제")}};
   f.onsubmit=e=>{e.preventDefault();
     const v=Object.fromEntries(new FormData(f));
+    if(v.type==="tr"||!v.end||v.end<=v.date){delete v.end;delete it.end}   // 종료일은 시작일보다 뒤일 때만 저장
     // 내용에 '양도확정1' 처럼 적으면 자동으로 양도로 바꿔서 양도 현황에 넣습니다
     const mm=String(v.lines||"").match(/양도\s*(확정|요청)\s*[0-9①-⑩]*/);
     if(v.type!=="tr"&&mm){v.type="tr";v.label=mm[0].replace(/\s+/g,"");v.lines=v.lines.replace(mm[0],"").replace(/^\s*[·,:\-]?\s*/,"").trim()||v.lines;
       v.course=(courses.find(n=>normCourse(n)===itemCourse({lines:v.lines}))||courses[0]||"")}
     if(v.type!=="tr"){delete v.label;delete v.course;delete v.person;delete it.course;delete it.label;delete it.person;delete it.color}
     else if(!v.person){delete v.person;delete it.person}
-    Object.assign(it,v);
+    Object.assign(it,v); it.u=Date.now();
     if(auto){state.skips=state.skips||{};state.skips[id]=1;delete it.virtual;it.id=uid();state.items.push(it)}   // 옮긴 날짜로 직접 일정을 만들고, 원래 자동 날짜는 빼 둡니다
     else if(!id){it.id=uid();state.items.push(it)}
     $("#modal").hidden=true;save()};
@@ -642,11 +714,11 @@ function loadXlsx(){return new Promise((res,rej)=>{
   s.onload=res; s.onerror=rej; document.head.appendChild(s)})}
 function itemRows(){
   return [...state.items].sort((a,b)=>a.date.localeCompare(b.date)||0).map(i=>{const tr=i.type==="tr";
-    return [i.date,KDOW[new Date(i.date+"T00:00:00").getDay()],TYPES[i.type]||i.type,String(i.lines||"").replace(/\n/g," / "),tr?dispLabel(i.label):"",tr?courseName(i):"",tr?personOf(i):""]});
+    return [i.date,KDOW[new Date(i.date+"T00:00:00").getDay()],TYPES[i.type]||i.type,String(i.lines||"").replace(/\n/g," / "),tr?dispLabel(i.label):"",tr?courseName(i):"",tr?personOf(i):"",i.end||""]});
 }
 function downloadBlob(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 function exportCsv(){
-  const rows=[["날짜","요일","구분","내용","양도 표시","골프장","양도 받는 분"],...itemRows()];
+  const rows=[["날짜","요일","구분","내용","양도 표시","골프장","양도 받는 분","종료일"],...itemRows()];
   downloadBlob(new Blob(["﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n")],{type:"text/csv"}),`대표님_스케줄_${ymd(new Date())}.csv`);
 }
 async function exportXlsx(){
@@ -654,7 +726,7 @@ async function exportXlsx(){
   try{
     await loadXlsx();
     const mk=ymd(cur).slice(0,7), m=cur.getMonth()+1, wb=XLSX.utils.book_new();
-    const ws1=XLSX.utils.aoa_to_sheet([["날짜","요일","구분","내용","양도 표시","골프장","양도 받는 분"],...itemRows()]);
+    const ws1=XLSX.utils.aoa_to_sheet([["날짜","요일","구분","내용","양도 표시","골프장","양도 받는 분","종료일"],...itemRows()]);
     ws1["!cols"]=[{wch:11},{wch:5},{wch:12},{wch:46},{wch:12},{wch:12},{wch:12}];
     XLSX.utils.book_append_sheet(wb,ws1,"전체 일정");
     const nm=a=>a.map(x=>`${personOf(x)}(${+x.date.slice(8)}일)`).join(", ");
@@ -691,21 +763,29 @@ function askRestore(file){
     $("#modal").hidden=false; $("#cancel").onclick=()=>$("#modal").hidden=true;
     $("#doRestore").onclick=()=>{
       try{localStorage.setItem("ceo_before_restore",JSON.stringify(state))}catch{}   // 되돌리기 전 내용을 이 기기에 한 번 남겨 둡니다
-      state=s; migrate(); $("#modal").hidden=true; save()};
+      // 백업 내용으로 통째로 되돌립니다. 지금 있던 것 중 백업에 없는 일정·지시사항은 '삭제 기록'을 남겨서 다른 기기에서 되살아나지 않게 합니다
+      const now=Date.now(), prev=state, nu={...s,sv:2};
+      nu.items=(s.items||[]).map(x=>({...x,u:now})); nu.notes=(s.notes||[]).map(x=>({...x,u:now}));
+      const ids=new Set([...nu.items,...nu.notes].map(x=>x.id));
+      nu.del={...(prev.del||{})}; [...(prev.items||[]),...(prev.notes||[])].forEach(x=>{if(!ids.has(x.id))nu.del[x.id]=now});
+      nu.tmeta={...(prev.tmeta||{}),rules:now}; Object.keys(nu.tables||{}).forEach(k=>nu.tmeta["t:"+k]=now);
+      state=nu; migrate(); $("#modal").hidden=true; save()};
   };
   rd.readAsText(file);
 }
 
 /* ===== 이벤트 ===== */
 document.addEventListener("click",e=>{
+  const no=e.target.closest("[data-nopen]");
+  if(no){const id=no.dataset.nopen; openNotes.has(id)?openNotes.delete(id):openNotes.add(id); return renderNotes()}
   const na=e.target.closest("[data-nact]");
   if(na){
     const n=(state.notes||[]).find(x=>x.id===na.dataset.nid); if(!n)return;
-    const a=na.dataset.nact;
+    const a=na.dataset.nact; n.u=Date.now();
     if(a==="seen")n.seen=true;
-    else if(a==="done"){n.done=true;n.seen=true}
-    else if(a==="undo")n.done=false;
-    else if(a==="del"){ if(delNote===n.id){state.notes=state.notes.filter(x=>x!==n);delNote=""} else{delNote=n.id;return renderNotes()} }
+    else if(a==="done"){n.done=true;n.seen=true;n.doneAt=new Date().toISOString()}
+    else if(a==="undo"){n.done=false;delete n.doneAt}
+    else if(a==="del"){ if(delNote===n.id){state.notes=state.notes.filter(x=>x!==n);(state.del=state.del||{})[n.id]=Date.now();delNote=""} else{delNote=n.id;return renderNotes()} }
     return save()}
   const n=e.target.closest("[data-nav]");
   if(n){const k=n.dataset.nav;
@@ -725,9 +805,9 @@ $("#backup").onclick=backupNow;
 $("#restore").onclick=()=>$("#restoreFile").click();
 $("#restoreFile").onchange=e=>{const f=e.target.files[0]; if(f)askRestore(f); e.target.value=""};
 $("#editTable").onclick=()=>{const mk=ymd(cur).slice(0,7);
-  openText(`${cur.getMonth()+1}월 양도 현황 수정`,tableOf(mk),v=>{state.tables=state.tables||{};state.tables[mk]=v},
+  openText(`${cur.getMonth()+1}월 양도 현황 수정`,tableOf(mk),v=>{state.tables=state.tables||{};state.tables[mk]=v;(state.tmeta=state.tmeta||{})["t:"+mk]=Date.now()},
   "이 달만 바뀝니다. 한 줄에 하나, 「골프장|양도가능|(비움)|메모」 형식. 양도 횟수와 받은 분은 달력의 양도 일정에서 자동으로 채워지니 세 번째 칸은 비워 두세요. 별표(*)로 시작하는 줄은 표 아래 메모로 나옵니다.")};
-$("#editRules").onclick=()=>openText("정기 모임 수정",state.rules,v=>{state.rules=v},"한 줄에 하나, 「이름|내용」 형식 (예: OO모임|첫째 주 화요일)");
+$("#editRules").onclick=()=>openText("정기 모임 수정",state.rules,v=>{state.rules=v;(state.tmeta=state.tmeta||{}).rules=Date.now()},"한 줄에 하나, 「이름|내용」 형식 (예: OO모임|첫째 주 화요일)");
 async function start(){await load();
   const k=ymd(cur).slice(0,7);
   if(!state.items.some(i=>i.date.startsWith(k))&&state.items.length){const l=[...state.items].map(i=>i.date).sort().pop();cur=new Date(l.slice(0,7)+"-01T00:00:00")}
